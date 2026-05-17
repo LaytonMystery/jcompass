@@ -470,6 +470,7 @@ body[data-user-clearance="STAFF"] .staff-action-link-btn {
   .cal-day-head { display: none; }
   .announcement-form-group { flex-direction: column; }
   .announcement-form-group .form-select { max-width: 100%; }
+<<<<<<< HEAD
 }
 
 /* ==========================================================================
@@ -612,3 +613,6 @@ body[data-user-clearance="STAFF"] .staff-action-link-btn {
   border-radius: 6px; cursor: pointer; transition: background 0.15s; white-space: nowrap;
 }
 .req-deny-btn:hover { background: rgba(229,62,62,0.2); }
+=======
+}
+>>>>>>> 18dc45ebf983a8edbbdbfd5cd8787a95e40fe03a

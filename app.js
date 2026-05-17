@@ -13,9 +13,15 @@ let registeredUsersDB = JSON.parse(localStorage.getItem('jcompass_accounts_db'))
 ];
 
 let projects = JSON.parse(localStorage.getItem('jcompass_projects')) || [
+<<<<<<< HEAD
   { id: 101, title: 'Global Supply Route Friction Analytics', category: 'INVESTIGATIVE', deadline: '2026-05-12', status: 'ACTIVE', priority: 'HIGH', progress: 65, reporter: 'Staff Reporter', notes: 'Key source: Trade Ministry official. Follow up on embargo docs.', tags: 'exclusive,urgent', archived: false },
   { id: 102, title: 'Mayoral Campaign Expenditure Audits', category: 'BREAKING', deadline: '2026-05-20', status: 'IN REVIEW', priority: 'HIGH', progress: 80, reporter: 'Staff Reporter', notes: 'FEC filings cross-referenced. Awaiting legal review.', tags: 'follow-up', archived: false },
   { id: 103, title: 'Local Tech Ecosystem Multi-Tier Integration', category: 'FEATURES', deadline: '2026-05-28', status: 'FILED', priority: 'MEDIUM', progress: 100, reporter: '', notes: '', tags: '', archived: false }
+=======
+  { id: 101, title: 'Global Supply Route Friction Analytics', category: 'INVESTIGATIVE', deadline: '2026-05-12', status: 'ACTIVE' },
+  { id: 102, title: 'Mayoral Campaign Expenditure Audits', category: 'BREAKING', deadline: '2026-05-20', status: 'IN REVIEW' },
+  { id: 103, title: 'Local Tech Ecosystem Multi-Tier Integration', category: 'FEATURES', deadline: '2026-05-28', status: 'FILED' }
+>>>>>>> 18dc45ebf983a8edbbdbfd5cd8787a95e40fe03a
 ];
 
 let assignments = JSON.parse(localStorage.getItem('jcompass_assignments')) || [
@@ -34,8 +40,11 @@ let announcements = JSON.parse(localStorage.getItem('jcompass_announcements')) |
   { id: 501, sender: 'Admin Account', target: 'ALL', text: 'All field correspondents report telemetry logs before 1800 hours sync.', timestamp: 'May 16, 2026' }
 ];
 
+<<<<<<< HEAD
 let archiveRequests = JSON.parse(localStorage.getItem('jcompass_archive_requests')) || [];
 
+=======
+>>>>>>> 18dc45ebf983a8edbbdbfd5cd8787a95e40fe03a
 // 2. INTERNAL STATE MEMORY STORAGE INTERACTION
 function flushStateToDisk() {
   localStorage.setItem('jcompass_accounts_db', JSON.stringify(registeredUsersDB));
@@ -44,7 +53,10 @@ function flushStateToDisk() {
   localStorage.setItem('jcompass_beats', JSON.stringify(beats));
   localStorage.setItem('jcompass_events', JSON.stringify(events));
   localStorage.setItem('jcompass_announcements', JSON.stringify(announcements));
+<<<<<<< HEAD
   localStorage.setItem('jcompass_archive_requests', JSON.stringify(archiveRequests));
+=======
+>>>>>>> 18dc45ebf983a8edbbdbfd5cd8787a95e40fe03a
 }
 
 // 3. SECURE APPLICATION SESSIONS MANAGEMENT
@@ -166,6 +178,7 @@ function rebuildApplicationDOMViews() {
   generateEventsTrackerChecklist();
   generateDeadlineCalendarGrid();
   initAttendancePage();
+<<<<<<< HEAD
   generateArchiveGrid();
 }
 
@@ -181,20 +194,31 @@ function getUrgencyLabel(deadline) {
   return `<span class="urgency-ok">✓ ${diff}d left</span>`;
 }
 
+=======
+}
+
+// 4. GENERATE PROJECT DASHBOARD & NEW COMPONENTS
+>>>>>>> 18dc45ebf983a8edbbdbfd5cd8787a95e40fe03a
 function generateProjectDashboard() {
   const container = document.getElementById('projectGrid');
   if (!container) return;
   container.innerHTML = '';
 
   const subset = projects.filter(item => {
+<<<<<<< HEAD
     if (item.archived) return false;
+=======
+>>>>>>> 18dc45ebf983a8edbbdbfd5cd8787a95e40fe03a
     const matchesFilter = (currentFilter === 'ALL' || item.category === currentFilter);
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
   });
 
+<<<<<<< HEAD
   const isAdmin = currentUser && currentUser.role === 'ADMIN';
 
+=======
+>>>>>>> 18dc45ebf983a8edbbdbfd5cd8787a95e40fe03a
   if (subset.length === 0) {
     container.innerHTML = `<div class="card" style="grid-column: 1/-1; text-align:center; color: var(--text-muted);">No operational folders match criteria.</div>`;
     return;
@@ -207,6 +231,7 @@ function generateProjectDashboard() {
     let statusClass = 'status-active';
     if (p.status === 'IN REVIEW') statusClass = 'status-review';
     if (p.status === 'FILED') statusClass = 'status-filed';
+<<<<<<< HEAD
     if (p.status === 'ON HOLD') statusClass = 'status-on-hold';
     if (p.status === 'PUBLISHED') statusClass = 'status-published';
 
@@ -257,10 +282,20 @@ function generateProjectDashboard() {
               </button>`;
             })()
         }
+=======
+
+    nodeCard.innerHTML = `
+      <div class="card-category">${p.category}</div>
+      <div class="card-title">${p.title}</div>
+      <div class="card-meta">
+        <span>📅 Dead: ${p.deadline}</span>
+        <span class="status-badge ${statusClass}">${p.status}</span>
+>>>>>>> 18dc45ebf983a8edbbdbfd5cd8787a95e40fe03a
       </div>
     `;
     container.appendChild(nodeCard);
   });
+<<<<<<< HEAD
 
   // Attach card action listeners
   container.querySelectorAll('.profile-btn').forEach(btn => {
@@ -275,6 +310,8 @@ function generateProjectDashboard() {
   container.querySelectorAll('.request-archive-btn').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); requestArchiveProject(parseInt(btn.dataset.id)); });
   });
+=======
+>>>>>>> 18dc45ebf983a8edbbdbfd5cd8787a95e40fe03a
 }
 
 function generateAnnouncementsStream() {
@@ -336,6 +373,7 @@ function generateStaffDirectory() {
   });
 }
 
+<<<<<<< HEAD
 // ============================================================
 //  PROJECT PROFILE MODAL
 // ============================================================
@@ -642,6 +680,8 @@ function generateArchiveGrid() {
   });
 }
 
+=======
+>>>>>>> 18dc45ebf983a8edbbdbfd5cd8787a95e40fe03a
 window.directRouteTaskTrigger = function(targetStaffName) {
   const modal = document.getElementById('addAssignmentModal');
   if (!modal) return;
@@ -1329,7 +1369,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!headline) return triggerNotificationToast("Card requires content text.");
 
+<<<<<<< HEAD
     projects.push({ id: Date.now(), title: headline, category: categoricalNode, deadline: dateLimit, status: 'ACTIVE', priority: 'MEDIUM', progress: 0, reporter: currentUser ? currentUser.name : '', notes: '', tags: '', archived: false });
+=======
+    projects.push({ id: Date.now(), title: headline, category: categoricalNode, deadline: dateLimit, status: 'ACTIVE' });
+>>>>>>> 18dc45ebf983a8edbbdbfd5cd8787a95e40fe03a
     flushStateToDisk();
     rebuildApplicationDOMViews();
     document.getElementById('newProjectModal').classList.remove('active');
@@ -1403,6 +1447,7 @@ document.addEventListener('DOMContentLoaded', () => {
     triggerNotificationToast("Session terminated safely. Resetting workspace profiles...");
     setTimeout(() => { location.reload(); }, 600);
   });
+<<<<<<< HEAD
 
   // Profile modal listeners
   document.getElementById('profileProgressInput')?.addEventListener('input', (e) => {
@@ -1451,4 +1496,6 @@ document.addEventListener('DOMContentLoaded', () => {
     archiveSearchQuery = e.target.value;
     generateArchiveGrid();
   });
+=======
+>>>>>>> 18dc45ebf983a8edbbdbfd5cd8787a95e40fe03a
 });
