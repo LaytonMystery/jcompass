@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="JCompass" />
+  <meta name="theme-color" content="#1e2235" />
+  <title>Journalist's Compass</title>
+
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="shortcut icon" href="favicon.ico" />
+  <link rel="apple-touch-icon" href="favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght=600;700;800&family=DM+Sans:wght=300;400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="auth-screen" id="authScreen">
+    <div class="auth-container">
+      
+      <div class="auth-graphic-side">
+        <div class="graphic-gradient-overlay"></div>
+        <div class="graphic-content">
+          <div class="graphic-logo">🧭</div>
+          <h2 class="graphic-title">Journalist's Compass</h2>
+          <p class="graphic-tagline">Centralized secure terminal for operations telemetry, editorial dispatch pipelines, and field correspondence networks.</p>
+          <div class="graphic-badge-row">
+            <span class="g-badge">Secure Terminal</span>
+            <span class="g-badge">Newsroom v1.5</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="auth-form-side">
+        
+        <div id="authViewLogin" class="auth-view-wrapper active">
+          <div class="auth-form-header">
+            <h3 class="auth-form-title">Welcome Back</h3>
+            <p class="auth-form-subtitle">Sign in to your Newsroom desk profile</p>
+          </div>
+
+          <div class="auth-error" id="authError">Invalid credentials or account mismatch.</div>
+
+          <div class="auth-field">
+            <label class="form-label" for="username">Username</label>
+            <input type="text" id="username" class="auth-input" placeholder="e.g., Staff Correspondent">
+          </div>
+          <div class="auth-field">
+            <label class="form-label" for="password">Password</label>
+            <input type="password" id="password" class="auth-input" placeholder="••••••••">
+          </div>
+
+          <button class="btn btn-primary auth-submit-btn" id="loginSubmitBtn">Authenticate Session</button>
+          
+          <div class="auth-toggle-msg">
+            Don't have an assignment profile? <button class="auth-link-btn" id="goToSignUpBtn">Request Registration</button>
+          </div>
+        </div>
+
+        <div id="authViewSignUp" class="auth-view-wrapper">
+          <div class="auth-form-header">
+            <h3 class="auth-form-title">Register Desk</h3>
+            <p class="auth-form-subtitle">Create your secure cryptographic node</p>
+          </div>
+
+          <div class="auth-error" id="signUpError">Invite verification code validation failed.</div>
+
+          <div class="auth-field">
+            <label class="form-label" for="signUpName">Full Representative Name</label>
+            <input type="text" id="signUpName" class="auth-input" placeholder="e.g., Jane Doe">
+          </div>
+          <div class="auth-field">
+            <label class="form-label" for="signUpPassword">Secure Password</label>
+            <input type="password" id="signUpPassword" class="auth-input" placeholder="Min. 6 alphanumeric keys">
+          </div>
+          <div class="auth-field">
+            <label class="form-label" for="signUpInvite">Newsroom Invite Access Code</label>
+            <input type="text" id="signUpInvite" class="auth-input" placeholder="Enter code (e.g., NEWSROOM2026, ADMIN2026)">
+          </div>
+
+          <button class="btn btn-primary auth-submit-btn" id="signUpSubmitBtn">Register Credentials</button>
+          
+          <div class="auth-toggle-msg">
+            Already registered on a desk? <button class="auth-link-btn" id="goToLoginBtn">Return to Sign In</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-icon">🧭</span>
+      <h1 class="brand-name">Journalist's Compass</h1>
+    </div>
+    
+    <nav class="sidebar-nav">
+      <ul class="nav-list">
+        <li class="nav-item active" data-page="dashboard"><span class="nav-icon">⌂</span><span class="nav-label">Project Dashboard</span></li>
+        <li class="nav-item" data-page="beat"><span class="nav-icon">📅</span><span class="nav-label">Beat Coverage</span></li>
+        <li class="nav-item" data-page="assignments"><span class="nav-icon">🔔</span><span class="nav-label">Assignments</span></li>
+        <li class="nav-item" data-page="attend"><span class="nav-icon">📋</span><span class="nav-label">Attend & Events</span></li>
+        <li class="nav-item" data-page="calendar"><span class="nav-icon">✓</span><span class="nav-label">Deadline Calendar</span></li>
+        <li class="nav-item" data-page="archive"><span class="nav-icon">🗄</span><span class="nav-label">Project Archive</span></li>
+      </ul>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="signout-btn" id="signOutBtn">→ SIGN OUT</button>
+    </div>
+  </aside>
+
+  <div class="control-tray-overlay" id="controlTrayOverlay"></div>
+  <div class="control-tray" id="controlTray">
+    <div class="tray-header">
+      <div class="tray-title">WORKSPACE CONTROLS</div>
+      <button class="tray-close" id="controlTrayCloseBtn">✕</button>
+    </div>
+    <div class="tray-body">
+      <div class="customizer-field">
+        <label for="sidebarNameInput" class="customizer-label">Edit Username</label>
+        <div class="input-inline-group">
+          <input type="text" id="sidebarNameInput" class="customizer-input" placeholder="Type new name...">
+          <button id="saveNameBtn" class="customizer-btn-save" title="Save Name">✓</button>
+        </div>
+      </div>
+
+      <div class="customizer-field" style="margin-top: 1.5rem;">
+        <label class="customizer-label">Select Theme</label>
+        <div class="theme-select-row">
+          <button class="theme-chip-btn active" data-theme="forest">🌲 Forest</button>
+          <button class="theme-chip-btn" data-theme="night">🌌 Night</button>
+          <button class="theme-chip-btn" data-theme="rust">🍂 Rust</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <main class="main-content">
+    <header class="topbar">
+      <button class="menu-toggle" id="menuToggle">☰</button>
+      <div class="topbar-center">
+        <span>JCompass</span>
+        <span class="breadcrumb-sep">›</span>
+        <span class="breadcrumb-current" id="breadcrumbCurrent">Project Dashboard</span>
+      </div>
+      <div class="topbar-right">
+        <div class="user-chip" id="userAvatarBtn">
+          <span class="clearance-badge" id="displayRole">STAFF</span>
+          <span class="user-name" id="displayName">Loading Profile...</span>
+          <div class="user-avatar" id="avatarBadgeIcon">JC</div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page active" id="page-dashboard">
+      
+      <div class="admin-exclusive-block" id="dashboardAdminConsole">
+        <div class="card panel-card">
+          <div class="card-category">ADMIN OPERATIONS CONSOLE</div>
+          <h3 class="section-title" style="font-size:1.2rem; margin-bottom: 0.5rem;">Issue Broadcast Announcement</h3>
+          <div class="announcement-form-group">
+            <input type="text" id="announceTextInput" class="form-input" placeholder="Type breaking newsroom announcement directive description...">
+            <select id="announcePingTarget" class="form-select" style="max-width: 180px;">
+              <option value="ALL">@All Desks</option>
+            </select>
+            <button class="btn btn-primary" id="submitAnnouncementBtn">Broadcast Alert</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="dashboard-announcements-section">
+        <h3 class="section-title" style="font-size:1.1rem; margin-bottom:0.75rem; display:flex; align-items:center; gap:0.5rem;"><span>📢</span> Operational Flash Despatches</h3>
+        <div class="announcements-stream" id="announcementsStreamContainer"></div>
+      </div>
+
+      <div class="dashboard-layout-grid">
+        <div class="dashboard-main-column">
+          <div class="filter-bar" id="dashboardFilterBar">
+            <button class="filter-chip active" data-filter="ALL">All Topics</button>
+            <button class="filter-chip" data-filter="INVESTIGATIVE">Investigative</button>
+            <button class="filter-chip" data-filter="SPORTS">Sports</button>
+            <button class="filter-chip" data-filter="FEATURES">Features</button>
+            <button class="filter-chip" data-filter="BREAKING">Breaking</button>
+            <button class="filter-chip" data-filter="OPINION">Opinion</button>
+          </div>
+          <div class="search-wrap" style="margin-top: 1rem; margin-bottom: 1.5rem;">
+            <input type="text" class="search-bar" id="dashboardSearchInput" placeholder="Search operational coverage directories...">
+          </div>
+          <div class="grid" id="projectGrid"></div>
+        </div>
+        
+        <div class="dashboard-side-column">
+          <div class="card panel-card">
+            <div class="card-category">ACTIVE NEWSROOM DIRECTORY</div>
+            <h3 class="section-title" style="font-size:1.1rem; margin-bottom: 0.75rem;">Staff & Correspondents</h3>
+            <div class="staff-directory-list" id="staffDirectoryList"></div>
+          </div>
+        </div>
+      </div>
+
+      <button class="fab" id="fabBtn" title="Launch New Operational Registry">+</button>
+    </div>
+
+    <div class="page" id="page-beat">
+      <div class="section-header">
+        <h2 class="section-title">Active Field Desk Assignments</h2>
+        <button class="btn btn-primary" id="addBeatBtn">+ Form Beat Hub</button>
+      </div>
+      <div class="grid" id="beatsGrid"></div>
+    </div>
+
+    <div class="page" id="page-assignments">
+      <div class="section-header">
+        <h2 class="section-title">Dispatched Editorial Workloads</h2>
+        <button class="btn btn-primary" id="addAssignmentBtn">+ Issue News Directive</button>
+      </div>
+      <div class="grid" id="assignmentsGrid"></div>
+    </div>
+
+    <div class="page" id="page-attend">
+
+      <!-- TOP ROW: Check-in + Today Summary -->
+      <div class="attendance-split" style="margin-bottom: 1.5rem;">
+
+        <!-- CHECK-IN CARD -->
+        <div class="card" style="display:flex; flex-direction:column; gap:1rem;">
+          <div>
+            <div class="card-category">FIELD ATTENDANCE TERMINAL</div>
+            <h3 style="font-family:var(--font-display); font-size:1.2rem; margin-top:0.25rem;">Mark Your Presence</h3>
+            <p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.4rem;">
+              Logs your name, timestamp, and GPS coordinates into the attendance ledger.
+            </p>
+          </div>
+
+          <!-- Status indicator -->
+          <div id="attendanceStatusBadge" style="display:none; padding:0.6rem 1rem; border-radius:8px; font-size:0.85rem; font-weight:600;"></div>
+
+          <!-- Live clock -->
+          <div style="background:rgba(0,0,0,0.2); border-radius:8px; padding:0.75rem 1rem; display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border-color);">
+            <div>
+              <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:1px;">CURRENT TIME</div>
+              <div id="liveClock" style="font-family:var(--font-display); font-size:1.5rem; font-weight:700; letter-spacing:1px;">--:--:--</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:1px;">TODAY</div>
+              <div id="liveDate" style="font-size:0.85rem; font-weight:600;">---</div>
+            </div>
+          </div>
+
+          <!-- Location preview -->
+          <div id="locationPreview" style="background:rgba(0,0,0,0.15); border-radius:8px; padding:0.75rem 1rem; font-size:0.8rem; color:var(--text-muted); border:1px solid var(--border-color); min-height:3rem; display:flex; align-items:center; gap:0.5rem;">
+            <span>📍</span>
+            <span id="locationPreviewText">Location will be captured on check-in.</span>
+          </div>
+
+          <button class="btn btn-primary" id="markAttendanceBtn" style="width:100%; padding:1rem; font-size:1rem; letter-spacing:0.5px;">
+            📍 Timestamp Geo-Presence Profile
+          </button>
+
+          <div id="telemetryStatus" style="font-size:0.82rem; color:var(--text-muted); line-height:1.5; min-height:1rem;"></div>
+        </div>
+
+        <!-- TODAY'S SUMMARY + CHECKLIST -->
+        <div style="display:flex; flex-direction:column; gap:1rem;">
+
+          <!-- Today's stats -->
+          <div class="card" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div style="text-align:center; padding:0.5rem;">
+              <div style="font-size:2rem; font-weight:800; font-family:var(--font-display); color:var(--accent-light);" id="statTodayCount">0</div>
+              <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px; margin-top:0.25rem;">TODAY'S CHECK-INS</div>
+            </div>
+            <div style="text-align:center; padding:0.5rem; border-left:1px solid var(--border-color);">
+              <div style="font-size:2rem; font-weight:800; font-family:var(--font-display); color:var(--success);" id="statTotalCount">0</div>
+              <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px; margin-top:0.25rem;">TOTAL LOGGED</div>
+            </div>
+          </div>
+
+          <!-- Checklist -->
+          <div class="card" style="flex:1;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+              <h3 style="font-family:var(--font-display); font-size:1rem;">Checklist Agenda Items</h3>
+              <button class="btn btn-ghost" id="addEventBtn" style="padding:0.25rem 0.5rem; font-size:0.8rem;">+ Inject Event</button>
+            </div>
+            <div class="event-checklist" id="eventsChecklistContainer"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ATTENDANCE LOG TABLE -->
+      <div class="card" style="padding:0; overflow:hidden;">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:1.25rem 1.5rem; border-bottom:1px solid var(--border-color);">
+          <div>
+            <div class="card-category">ATTENDANCE LEDGER</div>
+            <h3 style="font-family:var(--font-display); font-size:1.1rem; margin-top:0.15rem;">Check-In History</h3>
+          </div>
+          <div style="display:flex; gap:0.75rem; align-items:center;">
+            <input type="text" id="attendanceSearchInput" class="search-bar" placeholder="🔍 Search by name or date..." style="width:220px; padding:0.5rem 0.75rem; font-size:0.85rem;">
+            <button class="btn btn-ghost" id="exportAttendanceBtn" style="font-size:0.8rem; white-space:nowrap;">⬇ Export CSV</button>
+            <button class="btn btn-ghost" id="clearAttendanceBtn" style="font-size:0.8rem; color:var(--danger); border-color:rgba(229,62,62,0.3); white-space:nowrap;">🗑 Clear Log</button>
+          </div>
+        </div>
+
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+            <thead>
+              <tr style="background:rgba(0,0,0,0.2); text-align:left;">
+                <th style="padding:0.75rem 1.5rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">#</th>
+                <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">REPORTER</th>
+                <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">DATE</th>
+                <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">TIME</th>
+                <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">LATITUDE</th>
+                <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">LONGITUDE</th>
+                <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">ACCURACY</th>
+                <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">LOCATION LABEL</th>
+                <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">ROLE</th>
+                <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">MAP</th>
+              </tr>
+            </thead>
+            <tbody id="attendanceTableBody">
+              <tr id="attendanceEmptyRow">
+                <td colspan="9" style="text-align:center; padding:3rem; color:var(--text-muted); font-size:0.9rem;">No attendance records logged yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="page" id="page-calendar">
+      <div class="section-header">
+        <h2 class="section-title">Editorial Deadline Pipeline Calendar</h2>
+        <button class="btn btn-primary" id="addCalendarProjectBtn">+ Log Project Window</button>
+      </div>
+      <div class="calendar-grid" id="calendarMatrixLayout"></div>
+    </div>
+
+    <div class="page" id="page-archive">
+      <div class="section-header">
+        <h2 class="section-title">🗄 Project Archive Vault</h2>
+        <span class="archive-count-badge" id="archiveCountBadge">0 archived</span>
+      </div>
+      <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Completed or retired project card profiles. <span style="color:#fbd38d; font-weight:600;">🔒 Admin access only.</span> Staff may request archival from the project dashboard.</p>
+      <div class="search-wrap" style="margin-top:0.5rem;">
+        <input type="text" class="search-bar" id="archiveSearchInput" placeholder="Search archived projects...">
+      </div>
+      <div class="grid" id="archiveGrid"></div>
+    </div>
+  </main>
+
+  <div class="modal-overlay" id="newProjectModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Launch Project Card Profile</h2>
+        <button class="modal-close" data-close="newProjectModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label">Story Headline Context Scope</label>
+        <input class="form-input" id="newTitle" type="text" placeholder="Enter headline title details...">
+        <label class="form-label">Operational Taxonomy Category</label>
+        <select class="form-select" id="newCategory">
+          <option value="INVESTIGATIVE">Investigative Suite</option>
+          <option value="BREAKING">Breaking Dispatch</option>
+          <option value="FEATURES">Features Column</option>
+          <option value="SPORTS">Sports Desk</option>
+          <option value="OPINION">Opinion Segment</option>
+        </select>
+        <label class="form-label">Submission Target Deadline Date</label>
+        <input class="form-input" id="newDeadline" type="date">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="newProjectModal">Cancel</button>
+        <button class="btn btn-primary" id="createProjectBtn">Deploy Project Registry</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="addBeatModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Configure Beat Coverage</h2>
+        <button class="modal-close" data-close="addBeatModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label">Beat Structural Desk Name</label>
+        <input class="form-input" id="beatName" type="text" placeholder="e.g., Federal Courts, Crime Grid...">
+        <label class="form-label">Lead Correspondent Anchor</label>
+        <input class="form-input" id="beatReporter" type="text" placeholder="Assignee Account Profile">
+        <label class="form-label">Operational Priority Urgency</label>
+        <select class="form-select" id="beatPriority">
+          <option value="HIGH">High Critical Scope</option>
+          <option value="MEDIUM">Medium General Monitoring</option>
+          <option value="LOW">Low Latent Review</option>
+        </select>
+        <label class="form-label">Hub Banner Image Node Upload (Optional)</label>
+        <input class="form-input" id="beatImgUpload" type="file" accept="image/*" style="padding: 0.4rem;">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="addBeatModal">Cancel</button>
+        <button class="btn btn-primary" id="saveBeatBtn">Assemble Desk</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="addAssignmentModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Formulate Editorial Task</h2>
+        <button class="modal-close" data-close="addAssignmentModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label">Assignment Instruction Scope</label>
+        <input class="form-input" id="asgTitle" type="text" placeholder="Describe workflow context...">
+        <label class="form-label">Target Assignee Account Name</label>
+        <input class="form-input" id="asgAssignee" type="text" placeholder="Name">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="addAssignmentModal">Cancel</button>
+        <button class="btn btn-primary" id="saveAssignmentBtn">Dispatch Task</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="addEventModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Add Checklist Event Entry</h2>
+        <button class="modal-close" data-close="addEventModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label">Event Action Title</label>
+        <input class="form-input" id="evtName" type="text" placeholder="e.g., Live Interview with Governor Office">
+        <label class="form-label">Target Date</label>
+        <input class="form-input" id="evtDate" type="date">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="addEventModal">Cancel</button>
+        <button class="btn btn-primary" id="saveEventBtn">Inject Event</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GEO MAP MODAL -->
+  <div class="modal-overlay" id="geoMapModal">
+    <div class="modal" style="max-width:680px; width:95vw;">
+      <div class="modal-header">
+        <h2 class="modal-title">📍 Geo-Presence Location</h2>
+        <button class="modal-close" data-close="geoMapModal">✕</button>
+      </div>
+      <div class="modal-body" style="padding:0; overflow:hidden;">
+        <div id="geoMapReporterInfo" style="padding:1rem 1.25rem; background:rgba(0,0,0,0.2); border-bottom:1px solid var(--border-color); display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center;"></div>
+        <div style="position:relative; width:100%; height:380px; background:#141824;">
+          <iframe id="geoMapIframe"
+            width="100%" height="100%"
+            style="border:0; display:block;"
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+            src="about:blank"
+            allowfullscreen>
+          </iframe>
+          <div id="geoMapFallback" style="display:none; position:absolute; inset:0; flex-direction:column; align-items:center; justify-content:center; gap:1rem; padding:2rem; text-align:center; background:rgba(20,24,36,0.97);">
+            <div style="font-size:2.5rem;">🗺️</div>
+            <div id="geoMapFallbackCoords" style="font-family:monospace; font-size:0.9rem; color:var(--accent-light);"></div>
+            <a id="geoMapExternalLink" href="#" target="_blank" rel="noopener noreferrer"
+              class="btn btn-primary" style="font-size:0.85rem; padding:0.6rem 1.2rem; text-decoration:none;">
+              🌐 Open in Google Maps
+            </a>
+            <p style="font-size:0.78rem; color:var(--text-muted); max-width:300px;">Embedded map could not load. Click above to view coordinates in Google Maps.</p>
+          </div>
+        </div>
+        <div style="padding:0.75rem 1.25rem; display:flex; justify-content:flex-end; gap:0.75rem; border-top:1px solid var(--border-color);">
+          <a id="geoMapOpenBtn" href="#" target="_blank" rel="noopener noreferrer"
+            class="btn btn-ghost" style="font-size:0.82rem; text-decoration:none;">🌐 Open in Google Maps</a>
+          <button class="btn btn-ghost" data-close="geoMapModal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROJECT CARD PROFILE MODAL -->
+  <div class="modal-overlay" id="projectProfileModal">
+    <div class="modal" style="max-width:600px; width:95vw;">
+      <div class="modal-header">
+        <div style="display:flex; flex-direction:column; gap:0.25rem;">
+          <div class="card-category" id="profileModalCategory">CATEGORY</div>
+          <h2 class="modal-title" id="profileModalTitle">Project Title</h2>
+        </div>
+        <button class="modal-close" data-close="projectProfileModal">✕</button>
+      </div>
+      <div class="modal-body" style="gap:1.25rem;">
+        <!-- Status & Deadline Row -->
+        <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center;">
+          <span class="status-badge" id="profileModalStatus">ACTIVE</span>
+          <span style="font-size:0.82rem; color:var(--text-muted);">📅 Deadline: <b id="profileModalDeadline">—</b></span>
+          <span style="font-size:0.82rem; color:var(--text-muted);" id="profileModalUrgency"></span>
+        </div>
+        <!-- Progress Bar -->
+        <div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem;">
+            <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Completion Progress</span>
+            <span style="font-size:0.78rem; font-weight:700; color:var(--accent-light);" id="profileProgressLabel">0%</span>
+          </div>
+          <div style="background:rgba(0,0,0,0.3); border-radius:20px; height:8px; overflow:hidden;">
+            <div id="profileProgressBar" style="height:100%; background:var(--accent-light); border-radius:20px; transition:width 0.4s ease; width:0%;"></div>
+          </div>
+          <input type="range" id="profileProgressInput" min="0" max="100" step="5" value="0"
+            style="width:100%; margin-top:0.5rem; accent-color:var(--accent-light);">
+        </div>
+        <!-- Priority -->
+        <div>
+          <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:0.4rem;">Priority Level</span>
+          <div style="display:flex; gap:0.5rem;">
+            <button class="priority-select-btn" data-priority="LOW">🟢 Low</button>
+            <button class="priority-select-btn" data-priority="MEDIUM">🟡 Medium</button>
+            <button class="priority-select-btn" data-priority="HIGH">🔴 High</button>
+          </div>
+        </div>
+        <!-- Assigned Reporter -->
+        <div>
+          <label class="form-label">Assigned Reporter</label>
+          <input type="text" class="form-input" id="profileAssignedReporter" placeholder="Assign to reporter...">
+        </div>
+        <!-- Notes -->
+        <div>
+          <label class="form-label">Field Notes & Context</label>
+          <textarea class="form-input" id="profileNotes" rows="4" placeholder="Add editorial notes, source contacts, updates..." style="resize:vertical; font-family:var(--font-body);"></textarea>
+        </div>
+        <!-- Tags -->
+        <div>
+          <label class="form-label">Tags <span style="color:var(--text-muted); font-weight:400;">(comma separated)</span></label>
+          <input type="text" class="form-input" id="profileTags" placeholder="e.g., exclusive, urgent, follow-up">
+        </div>
+        <!-- Status Changer -->
+        <div>
+          <label class="form-label">Update Status</label>
+          <select class="form-select" id="profileStatusSelect">
+            <option value="ACTIVE">Active</option>
+            <option value="IN REVIEW">In Review</option>
+            <option value="FILED">Filed</option>
+            <option value="ON HOLD">On Hold</option>
+            <option value="PUBLISHED">Published</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content:space-between;">
+        <!-- Staff-only read-only notice -->
+        <div id="profileStaffNotice" style="display:none; align-items:center; gap:0.6rem; font-size:0.8rem; color:var(--text-muted); background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; padding:0.5rem 0.85rem; flex:1; margin-right:0.75rem;">
+          <span style="font-size:1rem;">🔒</span>
+          <span>Read-only. Only Admins can edit project profiles.</span>
+        </div>
+        <div style="display:flex; gap:0.5rem;">
+          <!-- Admin-only buttons -->
+          <button class="btn btn-ghost" id="profileArchiveBtn" style="color:var(--warning); border-color:rgba(221,107,32,0.4);">🗄 Archive</button>
+          <button class="btn btn-ghost" id="profileDeleteBtn" style="color:var(--danger); border-color:rgba(229,62,62,0.3);">🗑 Delete</button>
+          <!-- Staff-only button -->
+          <button class="btn btn-ghost" id="profileRequestArchiveBtn" style="display:none; color:var(--warning); border-color:rgba(221,107,32,0.4);">📤 Request Archive</button>
+        </div>
+        <div style="display:flex; gap:0.5rem; margin-left:0.5rem;">
+          <button class="btn btn-ghost" data-close="projectProfileModal">Cancel</button>
+          <button class="btn btn-primary" id="profileSaveBtn">💾 Save Profile</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">Operations Log Trace Notification</div>
+
+  <script src="app.js"></script>
+</body>
+</html>
