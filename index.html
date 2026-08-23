@@ -16,14 +16,13 @@
   <link rel="apple-touch-icon" href="favicon.ico" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght=600;700;800&family=DM+Sans:wght=300;400;500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
   <div class="auth-screen" id="authScreen">
     <div class="auth-container">
-      
       <div class="auth-graphic-side">
         <div class="graphic-gradient-overlay"></div>
         <div class="graphic-content">
@@ -32,21 +31,17 @@
           <p class="graphic-tagline">Centralized secure terminal for operations telemetry, editorial dispatch pipelines, and field correspondence networks.</p>
           <div class="graphic-badge-row">
             <span class="g-badge">Secure Terminal</span>
-            <span class="g-badge">Newsroom v1.5</span>
+            <span class="g-badge">Newsroom v2.0</span>
           </div>
         </div>
       </div>
-
       <div class="auth-form-side">
-        
         <div id="authViewLogin" class="auth-view-wrapper active">
           <div class="auth-form-header">
             <h3 class="auth-form-title">Welcome Back</h3>
             <p class="auth-form-subtitle">Sign in to your Newsroom desk profile</p>
           </div>
-
           <div class="auth-error" id="authError">Invalid credentials or account mismatch.</div>
-
           <div class="auth-field">
             <label class="form-label" for="username">Username</label>
             <input type="text" id="username" class="auth-input" placeholder="e.g., Staff Correspondent">
@@ -55,42 +50,8 @@
             <label class="form-label" for="password">Password</label>
             <input type="password" id="password" class="auth-input" placeholder="••••••••">
           </div>
-
           <button class="btn btn-primary auth-submit-btn" id="loginSubmitBtn">Authenticate Session</button>
-          
-          <div class="auth-toggle-msg">
-            Don't have an assignment profile? <button class="auth-link-btn" id="goToSignUpBtn">Request Registration</button>
-          </div>
         </div>
-
-        <div id="authViewSignUp" class="auth-view-wrapper">
-          <div class="auth-form-header">
-            <h3 class="auth-form-title">Register Desk</h3>
-            <p class="auth-form-subtitle">Create your secure cryptographic node</p>
-          </div>
-
-          <div class="auth-error" id="signUpError">Invite verification code validation failed.</div>
-
-          <div class="auth-field">
-            <label class="form-label" for="signUpName">Full Representative Name</label>
-            <input type="text" id="signUpName" class="auth-input" placeholder="e.g., Jane Doe">
-          </div>
-          <div class="auth-field">
-            <label class="form-label" for="signUpPassword">Secure Password</label>
-            <input type="password" id="signUpPassword" class="auth-input" placeholder="Min. 6 alphanumeric keys">
-          </div>
-          <div class="auth-field">
-            <label class="form-label" for="signUpInvite">Newsroom Invite Access Code</label>
-            <input type="text" id="signUpInvite" class="auth-input" placeholder="Enter code (e.g., NEWSROOM2026, ADMIN2026)">
-          </div>
-
-          <button class="btn btn-primary auth-submit-btn" id="signUpSubmitBtn">Register Credentials</button>
-          
-          <div class="auth-toggle-msg">
-            Already registered on a desk? <button class="auth-link-btn" id="goToLoginBtn">Return to Sign In</button>
-          </div>
-        </div>
-
       </div>
     </div>
   </div>
@@ -100,18 +61,18 @@
       <span class="brand-icon">🧭</span>
       <h1 class="brand-name">Journalist's Compass</h1>
     </div>
-    
     <nav class="sidebar-nav">
       <ul class="nav-list">
         <li class="nav-item active" data-page="dashboard"><span class="nav-icon">⌂</span><span class="nav-label">Project Dashboard</span></li>
-        <li class="nav-item" data-page="beat"><span class="nav-icon">📅</span><span class="nav-label">Beat Coverage</span></li>
+        <li class="nav-item" data-page="beat"><span class="nav-icon">📰</span><span class="nav-label">Beat Coverage</span></li>
         <li class="nav-item" data-page="assignments"><span class="nav-icon">🔔</span><span class="nav-label">Assignments</span></li>
         <li class="nav-item" data-page="attend"><span class="nav-icon">📋</span><span class="nav-label">Attend & Events</span></li>
-        <li class="nav-item" data-page="calendar"><span class="nav-icon">✓</span><span class="nav-label">Deadline Calendar</span></li>
+        <li class="nav-item" data-page="calendar"><span class="nav-icon">📅</span><span class="nav-label">Deadline Calendar</span></li>
+        <li class="nav-item" data-page="sources"><span class="nav-icon">🗃</span><span class="nav-label">Source Vault</span></li>
+        <li class="nav-item admin-only-nav" data-page="users"><span class="nav-icon">👥</span><span class="nav-label">User Management</span></li>
         <li class="nav-item" data-page="archive"><span class="nav-icon">🗄</span><span class="nav-label">Project Archive</span></li>
       </ul>
     </nav>
-
     <div class="sidebar-footer">
       <button class="signout-btn" id="signOutBtn">→ SIGN OUT</button>
     </div>
@@ -131,7 +92,6 @@
           <button id="saveNameBtn" class="customizer-btn-save" title="Save Name">✓</button>
         </div>
       </div>
-
       <div class="customizer-field" style="margin-top: 1.5rem;">
         <label class="customizer-label">Select Theme</label>
         <div class="theme-select-row">
@@ -160,8 +120,8 @@
       </div>
     </header>
 
+    <!-- DASHBOARD -->
     <div class="page active" id="page-dashboard">
-      
       <div class="admin-exclusive-block" id="dashboardAdminConsole">
         <div class="card panel-card">
           <div class="card-category">ADMIN OPERATIONS CONSOLE</div>
@@ -173,6 +133,30 @@
             </select>
             <button class="btn btn-primary" id="submitAnnouncementBtn">Broadcast Alert</button>
           </div>
+        </div>
+      </div>
+
+      <!-- Stats Row -->
+      <div class="stats-grid" id="dashboardStatsGrid">
+        <div class="stat-card">
+          <div class="stat-value" id="statActiveProjects">0</div>
+          <div class="stat-label">Active Projects</div>
+        </div>
+        <div class="stat-card stat-warning">
+          <div class="stat-value" id="statOverdue">0</div>
+          <div class="stat-label">Overdue</div>
+        </div>
+        <div class="stat-card stat-soon">
+          <div class="stat-value" id="statDueSoon">0</div>
+          <div class="stat-label">Due Soon (3d)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statStaffCount">0</div>
+          <div class="stat-label">Staff Members</div>
+        </div>
+        <div class="stat-card stat-success">
+          <div class="stat-value" id="statTodayCheckins">0</div>
+          <div class="stat-label">Today's Check-ins</div>
         </div>
       </div>
 
@@ -196,19 +180,25 @@
           </div>
           <div class="grid" id="projectGrid"></div>
         </div>
-        
         <div class="dashboard-side-column">
           <div class="card panel-card">
             <div class="card-category">ACTIVE NEWSROOM DIRECTORY</div>
             <h3 class="section-title" style="font-size:1.1rem; margin-bottom: 0.75rem;">Staff & Correspondents</h3>
             <div class="staff-directory-list" id="staffDirectoryList"></div>
           </div>
+          <div class="card panel-card">
+            <div class="card-category">QUICK ACTIONS</div>
+            <div style="display:flex; flex-direction:column; gap:0.5rem; margin-top:0.75rem;">
+              <button class="btn btn-primary" id="quickAddProjectBtn" style="font-size:0.85rem;">+ New Project</button>
+              <button class="btn btn-ghost" id="quickExportCSVBtn" style="font-size:0.85rem;">⬇ Export Projects CSV</button>
+            </div>
+          </div>
         </div>
       </div>
-
       <button class="fab" id="fabBtn" title="Launch New Operational Registry">+</button>
     </div>
 
+    <!-- BEATS -->
     <div class="page" id="page-beat">
       <div class="section-header">
         <h2 class="section-title">Active Field Desk Assignments</h2>
@@ -217,6 +207,7 @@
       <div class="grid" id="beatsGrid"></div>
     </div>
 
+    <!-- ASSIGNMENTS -->
     <div class="page" id="page-assignments">
       <div class="section-header">
         <h2 class="section-title">Dispatched Editorial Workloads</h2>
@@ -225,25 +216,16 @@
       <div class="grid" id="assignmentsGrid"></div>
     </div>
 
+    <!-- ATTENDANCE -->
     <div class="page" id="page-attend">
-
-      <!-- TOP ROW: Check-in + Today Summary -->
       <div class="attendance-split" style="margin-bottom: 1.5rem;">
-
-        <!-- CHECK-IN CARD -->
         <div class="card" style="display:flex; flex-direction:column; gap:1rem;">
           <div>
             <div class="card-category">FIELD ATTENDANCE TERMINAL</div>
             <h3 style="font-family:var(--font-display); font-size:1.2rem; margin-top:0.25rem;">Mark Your Presence</h3>
-            <p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.4rem;">
-              Logs your name, timestamp, and GPS coordinates into the attendance ledger.
-            </p>
+            <p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.4rem;">Logs your name, timestamp, and GPS coordinates into the attendance ledger.</p>
           </div>
-
-          <!-- Status indicator -->
           <div id="attendanceStatusBadge" style="display:none; padding:0.6rem 1rem; border-radius:8px; font-size:0.85rem; font-weight:600;"></div>
-
-          <!-- Live clock -->
           <div style="background:rgba(0,0,0,0.2); border-radius:8px; padding:0.75rem 1rem; display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border-color);">
             <div>
               <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:1px;">CURRENT TIME</div>
@@ -254,24 +236,14 @@
               <div id="liveDate" style="font-size:0.85rem; font-weight:600;">---</div>
             </div>
           </div>
-
-          <!-- Location preview -->
           <div id="locationPreview" style="background:rgba(0,0,0,0.15); border-radius:8px; padding:0.75rem 1rem; font-size:0.8rem; color:var(--text-muted); border:1px solid var(--border-color); min-height:3rem; display:flex; align-items:center; gap:0.5rem;">
             <span>📍</span>
             <span id="locationPreviewText">Location will be captured on check-in.</span>
           </div>
-
-          <button class="btn btn-primary" id="markAttendanceBtn" style="width:100%; padding:1rem; font-size:1rem; letter-spacing:0.5px;">
-            📍 Timestamp Geo-Presence Profile
-          </button>
-
+          <button class="btn btn-primary" id="markAttendanceBtn" style="width:100%; padding:1rem; font-size:1rem; letter-spacing:0.5px;">📍 Timestamp Geo-Presence Profile</button>
           <div id="telemetryStatus" style="font-size:0.82rem; color:var(--text-muted); line-height:1.5; min-height:1rem;"></div>
         </div>
-
-        <!-- TODAY'S SUMMARY + CHECKLIST -->
         <div style="display:flex; flex-direction:column; gap:1rem;">
-
-          <!-- Today's stats -->
           <div class="card" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
             <div style="text-align:center; padding:0.5rem;">
               <div style="font-size:2rem; font-weight:800; font-family:var(--font-display); color:var(--accent-light);" id="statTodayCount">0</div>
@@ -282,8 +254,6 @@
               <div style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px; margin-top:0.25rem;">TOTAL LOGGED</div>
             </div>
           </div>
-
-          <!-- Checklist -->
           <div class="card" style="flex:1;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
               <h3 style="font-family:var(--font-display); font-size:1rem;">Checklist Agenda Items</h3>
@@ -293,8 +263,6 @@
           </div>
         </div>
       </div>
-
-      <!-- ATTENDANCE LOG TABLE -->
       <div class="card" style="padding:0; overflow:hidden;">
         <div style="display:flex; justify-content:space-between; align-items:center; padding:1.25rem 1.5rem; border-bottom:1px solid var(--border-color);">
           <div>
@@ -307,7 +275,6 @@
             <button class="btn btn-ghost" id="clearAttendanceBtn" style="font-size:0.8rem; color:var(--danger); border-color:rgba(229,62,62,0.3); white-space:nowrap;">🗑 Clear Log</button>
           </div>
         </div>
-
         <div style="overflow-x:auto;">
           <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
             <thead>
@@ -326,23 +293,67 @@
             </thead>
             <tbody id="attendanceTableBody">
               <tr id="attendanceEmptyRow">
-                <td colspan="9" style="text-align:center; padding:3rem; color:var(--text-muted); font-size:0.9rem;">No attendance records logged yet.</td>
+                <td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted); font-size:0.9rem;">No attendance records logged yet.</td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
-
     </div>
 
+    <!-- CALENDAR -->
     <div class="page" id="page-calendar">
       <div class="section-header">
         <h2 class="section-title">Editorial Deadline Pipeline Calendar</h2>
         <button class="btn btn-primary" id="addCalendarProjectBtn">+ Log Project Window</button>
       </div>
+      <div class="calendar-header">
+        <button class="cal-nav-btn" id="calPrevMonth">‹</button>
+        <div class="cal-month-year" id="calMonthYear">August 2026</div>
+        <button class="cal-nav-btn" id="calNextMonth">›</button>
+      </div>
       <div class="calendar-grid" id="calendarMatrixLayout"></div>
     </div>
 
+    <!-- SOURCE VAULT -->
+    <div class="page" id="page-sources">
+      <div class="section-header">
+        <h2 class="section-title">Source Vault</h2>
+        <button class="btn btn-primary" id="addSourceBtn">+ Add Source</button>
+      </div>
+      <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Confidential source directory. Manage contacts, beats, and reliability ratings.</p>
+      <div class="search-wrap" style="margin-top:0.75rem; margin-bottom:1rem;">
+        <input type="text" class="search-bar" id="sourceSearchInput" placeholder="Search sources by name, beat, or contact...">
+      </div>
+      <div class="grid" id="sourcesGrid"></div>
+    </div>
+
+    <!-- USER MANAGEMENT (Admin Only) -->
+    <div class="page" id="page-users">
+      <div class="section-header">
+        <h2 class="section-title">User Management</h2>
+        <button class="btn btn-primary" id="addUserBtn">+ Create Account</button>
+      </div>
+      <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Admin-only desk. Create, manage, and revoke newsroom personnel credentials.</p>
+      <div class="card" style="margin-top:1rem; padding:0; overflow:hidden;">
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+            <thead>
+              <tr style="background:rgba(0,0,0,0.2); text-align:left;">
+                <th style="padding:0.9rem 1.25rem; color:var(--text-muted); font-weight:700; font-size:0.78rem; letter-spacing:0.5px;">CODE</th>
+                <th style="padding:0.9rem 1.25rem; color:var(--text-muted); font-weight:700; font-size:0.78rem; letter-spacing:0.5px;">NAME</th>
+                <th style="padding:0.9rem 1.25rem; color:var(--text-muted); font-weight:700; font-size:0.78rem; letter-spacing:0.5px;">ROLE</th>
+                <th style="padding:0.9rem 1.25rem; color:var(--text-muted); font-weight:700; font-size:0.78rem; letter-spacing:0.5px;">CREATED</th>
+                <th style="padding:0.9rem 1.25rem; color:var(--text-muted); font-weight:700; font-size:0.78rem; letter-spacing:0.5px; text-align:right;">ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ARCHIVE -->
     <div class="page" id="page-archive">
       <div class="section-header">
         <h2 class="section-title">🗄 Project Archive Vault</h2>
@@ -356,6 +367,7 @@
     </div>
   </main>
 
+  <!-- MODALS -->
   <div class="modal-overlay" id="newProjectModal">
     <div class="modal">
       <div class="modal-header">
@@ -448,6 +460,61 @@
     </div>
   </div>
 
+  <!-- ADD USER MODAL -->
+  <div class="modal-overlay" id="addUserModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Create Newsroom Account</h2>
+        <button class="modal-close" data-close="addUserModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label">Full Representative Name</label>
+        <input class="form-input" id="newUserName" type="text" placeholder="e.g., Jane Doe">
+        <label class="form-label">Secure Password</label>
+        <input class="form-input" id="newUserPass" type="text" placeholder="Min. 4 characters">
+        <label class="form-label">Desk Role</label>
+        <select class="form-select" id="newUserRole">
+          <option value="STAFF">Staff Reporter</option>
+          <option value="ADMIN">Administrator</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="addUserModal">Cancel</button>
+        <button class="btn btn-primary" id="saveUserBtn">Create Account</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD SOURCE MODAL -->
+  <div class="modal-overlay" id="addSourceModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Add Confidential Source</h2>
+        <button class="modal-close" data-close="addSourceModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label">Source Name / Alias</label>
+        <input class="form-input" id="sourceName" type="text" placeholder="e.g., Deep Throat">
+        <label class="form-label">Assigned Beat</label>
+        <input class="form-input" id="sourceBeat" type="text" placeholder="e.g., City Hall">
+        <label class="form-label">Contact Info</label>
+        <input class="form-input" id="sourceContact" type="text" placeholder="Email, phone, or secure channel">
+        <label class="form-label">Reliability Rating</label>
+        <select class="form-select" id="sourceReliability">
+          <option value="HIGH">🔴 High — Verified multiple times</option>
+          <option value="MEDIUM" selected>🟡 Medium — Mostly accurate</option>
+          <option value="LOW">🟢 Low — Unverified or single-source</option>
+        </select>
+        <label class="form-label">Notes & Context</label>
+        <textarea class="form-input" id="sourceNotes" rows="3" placeholder="Background, relationship history, handling notes..." style="resize:vertical; font-family:var(--font-body);"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="addSourceModal">Cancel</button>
+        <button class="btn btn-primary" id="saveSourceBtn">Save to Vault</button>
+      </div>
+    </div>
+  </div>
+
   <!-- GEO MAP MODAL -->
   <div class="modal-overlay" id="geoMapModal">
     <div class="modal" style="max-width:680px; width:95vw;">
@@ -458,34 +525,23 @@
       <div class="modal-body" style="padding:0; overflow:hidden;">
         <div id="geoMapReporterInfo" style="padding:1rem 1.25rem; background:rgba(0,0,0,0.2); border-bottom:1px solid var(--border-color); display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center;"></div>
         <div style="position:relative; width:100%; height:380px; background:#141824;">
-          <iframe id="geoMapIframe"
-            width="100%" height="100%"
-            style="border:0; display:block;"
-            loading="lazy"
-            referrerpolicy="no-referrer-when-downgrade"
-            src="about:blank"
-            allowfullscreen>
-          </iframe>
+          <iframe id="geoMapIframe" width="100%" height="100%" style="border:0; display:block;" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="about:blank" allowfullscreen></iframe>
           <div id="geoMapFallback" style="display:none; position:absolute; inset:0; flex-direction:column; align-items:center; justify-content:center; gap:1rem; padding:2rem; text-align:center; background:rgba(20,24,36,0.97);">
             <div style="font-size:2.5rem;">🗺️</div>
             <div id="geoMapFallbackCoords" style="font-family:monospace; font-size:0.9rem; color:var(--accent-light);"></div>
-            <a id="geoMapExternalLink" href="#" target="_blank" rel="noopener noreferrer"
-              class="btn btn-primary" style="font-size:0.85rem; padding:0.6rem 1.2rem; text-decoration:none;">
-              🌐 Open in Google Maps
-            </a>
+            <a id="geoMapExternalLink" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size:0.85rem; padding:0.6rem 1.2rem; text-decoration:none;">🌐 Open in Google Maps</a>
             <p style="font-size:0.78rem; color:var(--text-muted); max-width:300px;">Embedded map could not load. Click above to view coordinates in Google Maps.</p>
           </div>
         </div>
         <div style="padding:0.75rem 1.25rem; display:flex; justify-content:flex-end; gap:0.75rem; border-top:1px solid var(--border-color);">
-          <a id="geoMapOpenBtn" href="#" target="_blank" rel="noopener noreferrer"
-            class="btn btn-ghost" style="font-size:0.82rem; text-decoration:none;">🌐 Open in Google Maps</a>
+          <a id="geoMapOpenBtn" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-ghost" style="font-size:0.82rem; text-decoration:none;">🌐 Open in Google Maps</a>
           <button class="btn btn-ghost" data-close="geoMapModal">Close</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- PROJECT CARD PROFILE MODAL -->
+  <!-- PROJECT PROFILE MODAL -->
   <div class="modal-overlay" id="projectProfileModal">
     <div class="modal" style="max-width:600px; width:95vw;">
       <div class="modal-header">
@@ -496,13 +552,11 @@
         <button class="modal-close" data-close="projectProfileModal">✕</button>
       </div>
       <div class="modal-body" style="gap:1.25rem;">
-        <!-- Status & Deadline Row -->
         <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center;">
           <span class="status-badge" id="profileModalStatus">ACTIVE</span>
           <span style="font-size:0.82rem; color:var(--text-muted);">📅 Deadline: <b id="profileModalDeadline">—</b></span>
           <span style="font-size:0.82rem; color:var(--text-muted);" id="profileModalUrgency"></span>
         </div>
-        <!-- Progress Bar -->
         <div>
           <div style="display:flex; justify-content:space-between; margin-bottom:0.4rem;">
             <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Completion Progress</span>
@@ -511,10 +565,8 @@
           <div style="background:rgba(0,0,0,0.3); border-radius:20px; height:8px; overflow:hidden;">
             <div id="profileProgressBar" style="height:100%; background:var(--accent-light); border-radius:20px; transition:width 0.4s ease; width:0%;"></div>
           </div>
-          <input type="range" id="profileProgressInput" min="0" max="100" step="5" value="0"
-            style="width:100%; margin-top:0.5rem; accent-color:var(--accent-light);">
+          <input type="range" id="profileProgressInput" min="0" max="100" step="5" value="0" style="width:100%; margin-top:0.5rem; accent-color:var(--accent-light);">
         </div>
-        <!-- Priority -->
         <div>
           <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:0.4rem;">Priority Level</span>
           <div style="display:flex; gap:0.5rem;">
@@ -523,22 +575,18 @@
             <button class="priority-select-btn" data-priority="HIGH">🔴 High</button>
           </div>
         </div>
-        <!-- Assigned Reporter -->
         <div>
           <label class="form-label">Assigned Reporter</label>
           <input type="text" class="form-input" id="profileAssignedReporter" placeholder="Assign to reporter...">
         </div>
-        <!-- Notes -->
         <div>
           <label class="form-label">Field Notes & Context</label>
           <textarea class="form-input" id="profileNotes" rows="4" placeholder="Add editorial notes, source contacts, updates..." style="resize:vertical; font-family:var(--font-body);"></textarea>
         </div>
-        <!-- Tags -->
         <div>
           <label class="form-label">Tags <span style="color:var(--text-muted); font-weight:400;">(comma separated)</span></label>
           <input type="text" class="form-input" id="profileTags" placeholder="e.g., exclusive, urgent, follow-up">
         </div>
-        <!-- Status Changer -->
         <div>
           <label class="form-label">Update Status</label>
           <select class="form-select" id="profileStatusSelect">
@@ -551,16 +599,13 @@
         </div>
       </div>
       <div class="modal-footer" style="justify-content:space-between;">
-        <!-- Staff-only read-only notice -->
         <div id="profileStaffNotice" style="display:none; align-items:center; gap:0.6rem; font-size:0.8rem; color:var(--text-muted); background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; padding:0.5rem 0.85rem; flex:1; margin-right:0.75rem;">
           <span style="font-size:1rem;">🔒</span>
           <span>Read-only. Only Admins can edit project profiles.</span>
         </div>
         <div style="display:flex; gap:0.5rem;">
-          <!-- Admin-only buttons -->
           <button class="btn btn-ghost" id="profileArchiveBtn" style="color:var(--warning); border-color:rgba(221,107,32,0.4);">🗄 Archive</button>
           <button class="btn btn-ghost" id="profileDeleteBtn" style="color:var(--danger); border-color:rgba(229,62,62,0.3);">🗑 Delete</button>
-          <!-- Staff-only button -->
           <button class="btn btn-ghost" id="profileRequestArchiveBtn" style="display:none; color:var(--warning); border-color:rgba(221,107,32,0.4);">📤 Request Archive</button>
         </div>
         <div style="display:flex; gap:0.5rem; margin-left:0.5rem;">
@@ -572,7 +617,6 @@
   </div>
 
   <div class="toast" id="toast">Operations Log Trace Notification</div>
-
   <script src="app.js"></script>
 </body>
 </html>
