@@ -248,6 +248,10 @@
             <span>📍</span>
             <span id="locationPreviewText">Location will be captured on check-in.</span>
           </div>
+          <div>
+            <label class="form-label" style="margin-top:0;">Location Note (optional)</label>
+            <input class="form-input" id="attendanceLocationNote" type="text" placeholder="e.g., Covering press briefing at City Hall annex">
+          </div>
           <button class="btn btn-primary" id="markAttendanceBtn" style="width:100%; padding:1rem; font-size:1rem; letter-spacing:0.5px;">📍 Timestamp Geo-Presence Profile</button>
           <div id="telemetryStatus" style="font-size:0.82rem; color:var(--text-muted); line-height:1.5; min-height:1rem;"></div>
         </div>
@@ -263,10 +267,11 @@
             </div>
           </div>
           <div class="card" style="flex:1;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
               <h3 style="font-family:var(--font-display); font-size:1rem;">Checklist Agenda Items</h3>
               <button class="btn btn-ghost" id="addEventBtn" style="padding:0.25rem 0.5rem; font-size:0.8rem;">+ Inject Event</button>
             </div>
+            <p style="color:var(--text-muted); font-size:0.75rem; margin-bottom:0.75rem;">Archived items are included as a second table in the "⬇ Export CSV" download below.</p>
             <div class="event-checklist" id="eventsChecklistContainer"></div>
           </div>
         </div>
@@ -295,13 +300,14 @@
                 <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">LONGITUDE</th>
                 <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">ACCURACY</th>
                 <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">LOCATION LABEL</th>
+                <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">NOTE</th>
                 <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">ROLE</th>
                 <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem; letter-spacing:0.5px;">MAP</th>
               </tr>
             </thead>
             <tbody id="attendanceTableBody">
               <tr id="attendanceEmptyRow">
-                <td colspan="10" style="text-align:center; padding:3rem; color:var(--text-muted); font-size:0.9rem;">No attendance records logged yet.</td>
+                <td colspan="11" style="text-align:center; padding:3rem; color:var(--text-muted); font-size:0.9rem;">No attendance records logged yet.</td>
               </tr>
             </tbody>
           </table>
@@ -329,7 +335,7 @@
         <h2 class="section-title">Source Vault</h2>
         <button class="btn btn-primary" id="addSourceBtn">+ Add Source</button>
       </div>
-      <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Confidential source directory. Manage contacts, beats, and reliability ratings.</p>
+      <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Confidential source directory. Manage contacts, beats, and reliability ratings. <span style="color:#fbd38d; font-weight:600;">🔒 Admins remove sources directly — staff must submit a removal request for admin approval.</span></p>
       <div class="search-wrap" style="margin-top:0.75rem; margin-bottom:1rem;">
         <input type="text" class="search-bar" id="sourceSearchInput" placeholder="Search sources by name, beat, or contact...">
       </div>
@@ -379,8 +385,19 @@
       </div>
       <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Auto-generated summary reports from assignments and beats filed clear by an editor.</p>
       <div class="grid" id="archiveReportsGrid"></div>
+
+      <div class="section-header" style="margin-top: 2rem;">
+        <h2 class="section-title">📊 Activity Summary</h2>
+        <div style="display:flex; align-items:center; gap:0.75rem;">
+          <span class="archive-count-badge" id="activitySummaryCountBadge">0 generated</span>
+          <button class="btn btn-ghost" id="generateActivitySummaryBtn" style="font-size:0.8rem; white-space:nowrap;">📊 Generate Activity Summary</button>
+        </div>
+      </div>
+      <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">On-demand newsroom snapshots (active/archived projects, open vs. closed tasks and beats, sources, today's check-ins). Each snapshot can be exported individually as CSV.</p>
+      <div class="grid" id="activitySummaryGrid"></div>
     </div>
   </main>
+
 
   <!-- MODALS -->
   <div class="modal-overlay" id="newProjectModal">
@@ -445,7 +462,7 @@
       </div>
       <div class="modal-body">
         <label class="form-label">Assignment Instruction Scope</label>
-        <input class="form-input" id="asgTitle" type="text" placeholder="Describe workflow context...">
+        <input class="form-input" id="asgTitle" type="text" placeholder="Describe workflow context... (use @Full Name to also ping someone)">
         <label class="form-label">Target Assignee Account Name</label>
         <input class="form-input" id="asgAssignee" type="text" placeholder="Name">
       </div>
@@ -467,6 +484,8 @@
         <input class="form-input" id="evtName" type="text" placeholder="e.g., Live Interview with Governor Office">
         <label class="form-label">Target Date</label>
         <input class="form-input" id="evtDate" type="date">
+        <label class="form-label">Location Note (optional)</label>
+        <input class="form-input" id="evtLocationNote" type="text" placeholder="e.g., Security Briefing Room B, 2nd floor">
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" data-close="addEventModal">Cancel</button>
@@ -596,7 +615,7 @@
         </div>
         <div>
           <label class="form-label">Field Notes & Context</label>
-          <textarea class="form-input" id="profileNotes" rows="4" placeholder="Add editorial notes, source contacts, updates..." style="resize:vertical; font-family:var(--font-body);"></textarea>
+          <textarea class="form-input" id="profileNotes" rows="4" placeholder="Add editorial notes, source contacts, updates... (use @Full Name to ping someone)" style="resize:vertical; font-family:var(--font-body);"></textarea>
         </div>
         <div>
           <label class="form-label">Tags <span style="color:var(--text-muted); font-weight:400;">(comma separated)</span></label>

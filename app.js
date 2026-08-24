@@ -82,6 +82,45 @@ async function publishPingRemote(payload) {
   if (error) throw error;
 }
 
+// ===================== TASK-ASSIGNED / @MENTION PINGS =====================
+// Fires a targeted ping through the same pipeline as manual broadcasts, so
+// assignment and @mention alerts show up as real-time popups/toasts exactly
+// like a direct ping does (native OS notification if the tab is backgrounded
+// and permission was granted, in-app toast otherwise).
+function dispatchPing(sender, target, text) {
+  const payload = {
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    sender: sender, target: target, text: text,
+    timestamp: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  };
+  if (supabaseClient) {
+    publishPingRemote(payload).catch(err => console.error('JCompass: failed to publish ping.', err));
+  } else {
+    announcements.push(payload);
+    flushStateToDisk();
+    generateAnnouncementsStream();
+    notifyIncomingPing(payload);
+  }
+}
+
+// Scans free text for "@Full Name" mentions against the registered staff
+// directory and pings each matched person once. Used on assignment
+// instructions and project notes.
+function scanAndNotifyMentions(text, contextLabel) {
+  if (!text || !currentUser) return;
+  const mentionRegex = /@([A-Za-z][\w'-]*(?:\s[A-Za-z][\w'-]*)?)/g;
+  const alreadyNotified = new Set();
+  let match;
+  while ((match = mentionRegex.exec(text)) !== null) {
+    const raw = match[1].trim().toLowerCase();
+    const user = registeredUsersDB.find(u => u.name.toLowerCase() === raw || u.name.toLowerCase().startsWith(raw));
+    if (user && user.name !== currentUser.name && !alreadyNotified.has(user.name)) {
+      alreadyNotified.add(user.name);
+      dispatchPing(currentUser.name, user.name, 'You were mentioned ' + contextLabel + ': "' + text.trim() + '"');
+    }
+  }
+}
+
 // ===================== BROWSER / DEVICE POPUP NOTIFICATIONS =====================
 function refreshNotificationPermissionUI() {
   const btn = document.getElementById('enableNotificationsBtn');
@@ -209,7 +248,9 @@ let announcements = safeLoadJSON('jcompass_announcements', [
 let archiveRequests = safeLoadJSON('jcompass_archive_requests', []);
 let attendanceLogs = safeLoadJSON('jcompass_attendance', []);
 let sources = safeLoadJSON('jcompass_sources', []);
+let sourceRemovalRequests = safeLoadJSON('jcompass_source_removal_requests', []);
 let archivedReports = safeLoadJSON('jcompass_archived_reports', []);
+let activitySummaries = safeLoadJSON('jcompass_activity_summaries', []);
 let dismissedNoticeIds = safeLoadJSON('jcompass_dismissed_notices', []);
 let attendanceSearchQuery = '';
 let archiveSearchQuery = '';
@@ -226,6 +267,8 @@ function flushStateToDisk() {
   safeSaveJSON('jcompass_attendance', attendanceLogs);
   safeSaveJSON('jcompass_sources', sources);
   safeSaveJSON('jcompass_archived_reports', archivedReports);
+  safeSaveJSON('jcompass_activity_summaries', activitySummaries);
+  safeSaveJSON('jcompass_source_removal_requests', sourceRemovalRequests);
 }
 
 // ===================== AUTH & SESSION =====================
@@ -297,6 +340,7 @@ function rebuildApplicationDOMViews() {
   initAttendancePage();
   generateArchiveGrid();
   generateArchiveReportsGrid();
+  generateActivitySummaryGrid();
   generateSourcesGrid();
   generateUsersTable();
   generateNotificationBar();
@@ -621,6 +665,7 @@ function saveProjectProfile() {
   rebuildApplicationDOMViews();
   document.getElementById('projectProfileModal').classList.remove('active');
   triggerNotificationToast('Project profile updated successfully.');
+  scanAndNotifyMentions(p.notes, 'in project "' + p.title + '"');
 }
 
 function archiveProject(projectId) {
@@ -836,6 +881,117 @@ function generateArchiveReportsGrid() {
   });
 }
 
+// ===================== ACTIVITY SUMMARY (separate from Closed-Out Reports) =====================
+function generateActivitySummaryGrid() {
+  const container = document.getElementById('activitySummaryGrid');
+  const countBadge = document.getElementById('activitySummaryCountBadge');
+  if (!container) return;
+  container.innerHTML = '';
+  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+  if (!isAdmin) {
+    if (countBadge) countBadge.style.display = 'none';
+    return;
+  }
+  const query = archiveSearchQuery.toLowerCase();
+  const summaries = activitySummaries.filter(r => r.title.toLowerCase().includes(query) || r.summary.toLowerCase().includes(query));
+  if (countBadge) {
+    countBadge.style.display = '';
+    countBadge.innerText = activitySummaries.length + ' generated';
+  }
+  if (summaries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'card';
+    empty.style.cssText = 'grid-column:1/-1; text-align:center; color:var(--text-muted); padding:2rem;';
+    empty.innerText = 'No activity summaries yet. Use "📊 Generate Activity Summary" to snapshot newsroom activity.';
+    container.appendChild(empty);
+    return;
+  }
+  summaries.slice().reverse().forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML =
+      '<div class="card-category">📊 Activity Summary</div>' +
+      '<div class="card-title" style="font-size:1.0rem;">' + r.title + '</div>' +
+      '<div style="font-size:0.82rem; color:var(--text-muted); line-height:1.5;">' + r.summary + '</div>' +
+      '<div class="card-meta"><span>🖊 Generated by ' + r.closedBy + '</span><span>📅 ' + r.timestamp + '</span></div>' +
+      '<div style="display:flex; gap:0.5rem; padding-top:0.5rem; border-top:1px solid rgba(255,255,255,0.05);">' +
+      '<button class="card-action-btn export-summary-btn" data-id="' + r.id + '" style="flex:1;">⬇ Export CSV</button>' +
+      '<button class="card-action-btn delete-summary-btn" data-id="' + r.id + '" style="flex:1; color:var(--danger);">🗑 Delete</button>' +
+      '</div>';
+    container.appendChild(card);
+  });
+  container.querySelectorAll('.export-summary-btn').forEach(btn => {
+    btn.addEventListener('click', () => exportActivitySummaryCSV(parseInt(btn.dataset.id)));
+  });
+  container.querySelectorAll('.delete-summary-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!confirm('Permanently delete this activity summary? This cannot be undone.')) return;
+      activitySummaries = activitySummaries.filter(r => r.id !== parseInt(btn.dataset.id));
+      flushStateToDisk();
+      generateActivitySummaryGrid();
+      triggerNotificationToast('Activity summary deleted.');
+    });
+  });
+}
+
+function exportActivitySummaryCSV(reportId) {
+  const r = activitySummaries.find(x => x.id === reportId);
+  if (!r) return;
+  const m = r.meta || {};
+  const headers = ['Title', 'Generated By', 'Date', 'Active Projects', 'Archived Projects', 'Open Assignments', 'Open Beats', 'Sources On File', 'Closed Assignments (all-time)', 'Closed Beats (all-time)', 'Check-ins Today'];
+  const row = [
+    '"' + r.title.replace(/"/g, '""') + '"', '"' + r.closedBy + '"', r.timestamp,
+    m.activeProjects, m.archivedProjectsCount, m.openAssignments, m.openBeats,
+    m.sourcesCount, m.closedTasks, m.closedBeats, m.todayCheckins
+  ].join(',');
+  const csv = [headers.join(','), row].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'jcompass_activity_summary_' + r.timestamp.replace(/[, ]+/g, '_') + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  triggerNotificationToast('Activity summary exported as CSV.');
+}
+
+// Generates a snapshot report of overall newsroom activity (active/archived
+// projects, open vs. closed tasks and beats, sources on file, and today's
+// attendance) and files it into its own Activity Summary section.
+function generateActivitySummaryReport() {
+  if (!currentUser || currentUser.role !== 'ADMIN') {
+    triggerNotificationToast('Permission denied. Only Admins can generate activity summaries.');
+    return;
+  }
+  const activeProjects = projects.filter(p => !p.archived).length;
+  const archivedProjectsCount = projects.filter(p => p.archived).length;
+  const openAssignments = assignments.length;
+  const openBeats = beats.length;
+  const sourcesCount = sources.length;
+  const closedTasks = archivedReports.filter(r => r.type === 'ASSIGNMENT').length;
+  const closedBeats = archivedReports.filter(r => r.type === 'BEAT').length;
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const todayCheckins = attendanceLogs.filter(l => l.date === todayStr).length;
+  const now = new Date();
+  const closedDate = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const summaryText =
+    'Snapshot as of ' + closedDate + ': ' + activeProjects + ' active project(s), ' + archivedProjectsCount + ' archived. ' +
+    openAssignments + ' assignment(s) and ' + openBeats + ' beat(s) currently open; ' +
+    closedTasks + ' assignment(s) and ' + closedBeats + ' beat(s) have been filed clear to date. ' +
+    sourcesCount + ' source(s) on file in the vault. ' + todayCheckins + ' field check-in(s) logged today.';
+  activitySummaries.push({
+    id: Date.now(),
+    title: 'Newsroom Activity Summary — ' + closedDate,
+    summary: summaryText,
+    meta: { activeProjects, archivedProjectsCount, openAssignments, openBeats, sourcesCount, closedTasks, closedBeats, todayCheckins },
+    closedBy: currentUser.name,
+    timestamp: closedDate
+  });
+  flushStateToDisk();
+  generateActivitySummaryGrid();
+  triggerNotificationToast('Activity summary generated and filed.');
+}
+
 window.directRouteTaskTrigger = function(targetStaffName) {
   const modal = document.getElementById('addAssignmentModal');
   if (!modal) return;
@@ -960,23 +1116,79 @@ function generateEventsTrackerChecklist() {
   const container = document.getElementById('eventsChecklistContainer');
   if (!container) return;
   container.innerHTML = '';
-  if (events.length === 0) {
-    container.innerHTML = '<div style="text-align:center; color:var(--text-muted); font-size:0.9rem; padding:2rem 0;">Agenda completely cleared.</div>';
-    return;
-  }
-  events.forEach(evt => {
-    const div = document.createElement('div');
-    div.className = 'event-row ' + (evt.completed ? 'done' : '');
-    div.innerHTML =
-      '<div><div style="font-weight:600; font-size:0.9rem;">' + evt.name + '</div><div style="font-size:0.75rem; color: var(--text-muted);">Target Date: ' + evt.date + '</div></div>' +
-      '<button class="event-check-btn">' + (evt.completed ? '✓' : '○') + '</button>';
-    div.querySelector('.event-check-btn').addEventListener('click', () => {
-      evt.completed = !evt.completed;
-      flushStateToDisk();
-      generateEventsTrackerChecklist();
+  const active = events.filter(evt => !evt.archived);
+  const archived = events.filter(evt => evt.archived);
+
+  if (active.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'text-align:center; color:var(--text-muted); font-size:0.9rem; padding:2rem 0;';
+    empty.innerText = 'Agenda completely cleared.';
+    container.appendChild(empty);
+  } else {
+    active.forEach(evt => {
+      const div = document.createElement('div');
+      div.className = 'event-row ' + (evt.completed ? 'done' : '');
+      div.innerHTML =
+        '<div><div style="font-weight:600; font-size:0.9rem;">' + evt.name + '</div><div style="font-size:0.75rem; color: var(--text-muted);">Target Date: ' + evt.date + (evt.locationNote ? ' · 📍 ' + evt.locationNote : '') + '</div></div>' +
+        '<div style="display:flex; align-items:center; gap:0.4rem; flex-shrink:0;">' +
+        '<button class="event-check-btn" title="Mark complete/incomplete">' + (evt.completed ? '✓' : '○') + '</button>' +
+        '<button class="event-archive-btn btn btn-ghost" title="Archive this item" style="padding:0.2rem 0.45rem; font-size:0.85rem;">🗄</button>' +
+        '<button class="event-remove-btn btn btn-ghost" title="Remove this item" style="padding:0.2rem 0.45rem; font-size:0.85rem; color:var(--danger); border-color:rgba(229,62,62,0.3);">🗑</button>' +
+        '</div>';
+      div.querySelector('.event-check-btn').addEventListener('click', () => {
+        evt.completed = !evt.completed;
+        flushStateToDisk();
+        generateEventsTrackerChecklist();
+      });
+      div.querySelector('.event-archive-btn').addEventListener('click', () => {
+        evt.archived = true;
+        evt.archivedAt = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        flushStateToDisk();
+        generateEventsTrackerChecklist();
+        triggerNotificationToast('Agenda item archived.');
+      });
+      div.querySelector('.event-remove-btn').addEventListener('click', () => {
+        if (!confirm('Remove "' + evt.name + '" from the agenda? This cannot be undone.')) return;
+        events = events.filter(x => x.id !== evt.id);
+        flushStateToDisk();
+        generateEventsTrackerChecklist();
+        triggerNotificationToast('Agenda item removed.');
+      });
+      container.appendChild(div);
     });
-    container.appendChild(div);
-  });
+  }
+
+  if (archived.length > 0) {
+    const archHeader = document.createElement('div');
+    archHeader.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-top:1rem; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.06); font-size:0.78rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;';
+    archHeader.innerHTML = '<span>🗄 ARCHIVED ITEMS</span><span>' + archived.length + '</span>';
+    container.appendChild(archHeader);
+    archived.forEach(evt => {
+      const div = document.createElement('div');
+      div.className = 'event-row done';
+      div.style.opacity = '0.7';
+      div.innerHTML =
+        '<div><div style="font-weight:600; font-size:0.9rem;">' + evt.name + '</div><div style="font-size:0.75rem; color: var(--text-muted);">Target Date: ' + evt.date + (evt.locationNote ? ' · 📍 ' + evt.locationNote : '') + '</div></div>' +
+        '<div style="display:flex; align-items:center; gap:0.4rem; flex-shrink:0;">' +
+        '<button class="event-restore-btn btn btn-ghost" title="Restore to active agenda" style="padding:0.2rem 0.5rem; font-size:0.75rem;">↩ Restore</button>' +
+        '<button class="event-remove-btn btn btn-ghost" title="Permanently delete" style="padding:0.2rem 0.45rem; font-size:0.85rem; color:var(--danger); border-color:rgba(229,62,62,0.3);">🗑</button>' +
+        '</div>';
+      div.querySelector('.event-restore-btn').addEventListener('click', () => {
+        evt.archived = false;
+        flushStateToDisk();
+        generateEventsTrackerChecklist();
+        triggerNotificationToast('Agenda item restored.');
+      });
+      div.querySelector('.event-remove-btn').addEventListener('click', () => {
+        if (!confirm('Permanently delete "' + evt.name + '"? This cannot be undone.')) return;
+        events = events.filter(x => x.id !== evt.id);
+        flushStateToDisk();
+        generateEventsTrackerChecklist();
+        triggerNotificationToast('Archived agenda item deleted.');
+      });
+      container.appendChild(div);
+    });
+  }
 }
 
 // ===================== DYNAMIC CALENDAR =====================
@@ -1039,10 +1251,94 @@ function generateDeadlineCalendarGrid() {
 }
 
 // ===================== SOURCE VAULT =====================
+function removeSourceDirect(sourceId) {
+  if (!currentUser || currentUser.role !== 'ADMIN') {
+    triggerNotificationToast('Permission denied. Only Admins can remove sources directly.');
+    return;
+  }
+  const s = sources.find(x => x.id === sourceId);
+  if (!s) return;
+  if (!confirm('Remove "' + s.name + '" from the vault? This cannot be undone.')) return;
+  sources = sources.filter(x => x.id !== sourceId);
+  sourceRemovalRequests = sourceRemovalRequests.filter(r => r.sourceId !== sourceId);
+  flushStateToDisk();
+  generateSourcesGrid();
+  triggerNotificationToast('Source removed from vault.');
+}
+
+function requestRemoveSource(sourceId) {
+  if (!currentUser) return;
+  const s = sources.find(x => x.id === sourceId);
+  if (!s) return;
+  const duplicate = sourceRemovalRequests.some(r => r.sourceId === sourceId && r.status === 'PENDING' && r.requester === currentUser.name);
+  if (duplicate) {
+    triggerNotificationToast('You already have a pending removal request for this source.');
+    return;
+  }
+  sourceRemovalRequests.push({
+    id: Date.now(), sourceId: sourceId, sourceName: s.name,
+    requester: currentUser.name,
+    timestamp: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    status: 'PENDING'
+  });
+  flushStateToDisk();
+  generateSourcesGrid();
+  triggerNotificationToast('Removal request submitted for "' + s.name + '". Awaiting admin approval.');
+}
+
+function approveRemoveSourceRequest(requestId) {
+  if (!currentUser || currentUser.role !== 'ADMIN') return;
+  const req = sourceRemovalRequests.find(r => r.id === requestId);
+  if (!req) return;
+  req.status = 'APPROVED';
+  sources = sources.filter(x => x.id !== req.sourceId);
+  flushStateToDisk();
+  generateSourcesGrid();
+  triggerNotificationToast('Removal request by ' + req.requester + ' approved — source deleted.');
+}
+
+function denyRemoveSourceRequest(requestId) {
+  if (!currentUser || currentUser.role !== 'ADMIN') return;
+  const req = sourceRemovalRequests.find(r => r.id === requestId);
+  if (!req) return;
+  req.status = 'DENIED';
+  flushStateToDisk();
+  generateSourcesGrid();
+  triggerNotificationToast('Removal request denied.');
+}
+
 function generateSourcesGrid() {
   const container = document.getElementById('sourcesGrid');
   if (!container) return;
   container.innerHTML = '';
+  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+
+  if (isAdmin) {
+    const pending = sourceRemovalRequests.filter(r => r.status === 'PENDING');
+    if (pending.length > 0) {
+      const reqPanel = document.createElement('div');
+      reqPanel.style.cssText = 'grid-column:1/-1;';
+      reqPanel.innerHTML =
+        '<div class="archive-requests-panel"><div class="archive-req-header"><span>📥 Pending Source Removal Requests</span><span class="archive-req-count">' + pending.length + '</span></div><div class="archive-req-list" id="sourceRemovalReqList"></div></div>';
+      container.appendChild(reqPanel);
+      const reqList = reqPanel.querySelector('#sourceRemovalReqList');
+      pending.forEach(req => {
+        const row = document.createElement('div');
+        row.className = 'archive-req-row';
+        row.innerHTML =
+          '<div class="archive-req-info"><div style="font-weight:700; font-size:0.9rem;">' + req.sourceName + '</div><div style="font-size:0.78rem; color:var(--text-muted);">Requested by <b>' + req.requester + '</b> · ' + req.timestamp + '</div></div>' +
+          '<div style="display:flex; gap:0.5rem; flex-shrink:0;"><button class="req-approve-btn" data-req-id="' + req.id + '">✓ Approve</button><button class="req-deny-btn" data-req-id="' + req.id + '">✕ Deny</button></div>';
+        reqList.appendChild(row);
+      });
+      reqPanel.querySelectorAll('.req-approve-btn').forEach(btn => {
+        btn.addEventListener('click', () => approveRemoveSourceRequest(parseInt(btn.dataset.reqId)));
+      });
+      reqPanel.querySelectorAll('.req-deny-btn').forEach(btn => {
+        btn.addEventListener('click', () => denyRemoveSourceRequest(parseInt(btn.dataset.reqId)));
+      });
+    }
+  }
+
   const query = sourceSearchQuery.toLowerCase();
   const subset = sources.filter(s =>
     s.name.toLowerCase().includes(query) ||
@@ -1050,7 +1346,11 @@ function generateSourcesGrid() {
     (s.contact || '').toLowerCase().includes(query)
   );
   if (subset.length === 0) {
-    container.innerHTML = '<div class="card" style="grid-column:1/-1; text-align:center; color:var(--text-muted); padding:3rem;">No sources in vault. Add a confidential source to get started.</div>';
+    const empty = document.createElement('div');
+    empty.className = 'card';
+    empty.style.cssText = 'grid-column:1/-1; text-align:center; color:var(--text-muted); padding:3rem;';
+    empty.innerText = 'No sources in vault. Add a confidential source to get started.';
+    container.appendChild(empty);
     return;
   }
   subset.forEach(s => {
@@ -1058,6 +1358,10 @@ function generateSourcesGrid() {
     card.className = 'card source-card';
     const relColors = { HIGH: '#fc8181', MEDIUM: '#fbd38d', LOW: '#9ae6b4' };
     const relLabels = { HIGH: '🔴 High', MEDIUM: '🟡 Medium', LOW: '🟢 Low' };
+    const pendingForThis = sourceRemovalRequests.some(r => r.sourceId === s.id && r.status === 'PENDING' && r.requester === (currentUser ? currentUser.name : ''));
+    const actionBtnHtml = isAdmin
+      ? '<button class="btn btn-ghost source-delete-btn" data-id="' + s.id + '" style="font-size:0.75rem; padding:0.25rem 0.5rem; color:var(--danger); border-color:rgba(229,62,62,0.3);">Remove</button>'
+      : '<button class="btn btn-ghost source-request-remove-btn" data-id="' + s.id + '" ' + (pendingForThis ? 'disabled' : '') + ' style="font-size:0.75rem; padding:0.25rem 0.5rem; color:#fbd38d; border-color:rgba(221,107,32,0.35);">' + (pendingForThis ? '⏳ Pending...' : '📤 Request Removal') + '</button>';
     card.innerHTML =
       '<div style="display:flex; justify-content:space-between; align-items:flex-start;"><div class="card-title" style="font-size:1.1rem;">' + s.name + '</div>' +
       '<span style="font-size:0.72rem; font-weight:800; padding:0.2rem 0.5rem; border-radius:4px; background:' + (relColors[s.reliability] || 'var(--border-color)') + '22; color:' + (relColors[s.reliability] || 'var(--text-muted)') + '; border:1px solid ' + (relColors[s.reliability] || 'var(--border-color)') + '44;">' + (relLabels[s.reliability] || s.reliability) + '</span></div>' +
@@ -1065,17 +1369,19 @@ function generateSourcesGrid() {
       '<div style="font-size:0.82rem; color:var(--accent-light); font-family:monospace;">' + (s.contact || 'No contact on file') + '</div>' +
       (s.notes ? '<div style="font-size:0.8rem; color:var(--text-muted); margin-top:0.5rem; padding-top:0.5rem; border-top:1px solid rgba(255,255,255,0.05);">' + s.notes + '</div>' : '') +
       '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:auto; padding-top:0.75rem; border-top:1px solid rgba(255,255,255,0.05);"><span style="font-size:0.7rem; color:var(--text-muted);">Added by ' + (s.createdBy || 'Unknown') + '</span>' +
-      '<button class="btn btn-ghost source-delete-btn" data-id="' + s.id + '" style="font-size:0.75rem; padding:0.25rem 0.5rem; color:var(--danger); border-color:rgba(229,62,62,0.3);">Remove</button></div>';
+      actionBtnHtml + '</div>';
     container.appendChild(card);
   });
   container.querySelectorAll('.source-delete-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (!confirm('Remove this source from the vault?')) return;
-      sources = sources.filter(s => s.id !== parseInt(btn.dataset.id));
-      flushStateToDisk();
-      generateSourcesGrid();
-      triggerNotificationToast('Source removed from vault.');
+      removeSourceDirect(parseInt(btn.dataset.id));
+    });
+  });
+  container.querySelectorAll('.source-request-remove-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      requestRemoveSource(parseInt(btn.dataset.id));
     });
   });
 }
@@ -1207,14 +1513,18 @@ function processFieldTelemetryMarking() {
       const now = new Date();
       loggerNode.innerHTML = '<span style="color:var(--text-muted);">🌐 Resolving location name...</span>';
       const locationLabel = await reverseGeocodeLabel(lat, lon);
+      const noteInput = document.getElementById('attendanceLocationNote');
+      const locationNote = noteInput ? noteInput.value.trim() : '';
       const entry = {
         id: Date.now(), reporter: currentUser.name, role: currentUser.role,
         date: now.toLocaleDateString('en-CA'),
         time: now.toLocaleTimeString('en-US', { hour12: true }),
         lat: lat.toFixed(6), lon: lon.toFixed(6),
         accuracy: Math.round(accuracy), location: locationLabel,
+        note: locationNote,
         timestamp: now.toISOString()
       };
+      if (noteInput) noteInput.value = '';
       attendanceLogs.unshift(entry);
       saveAttendanceLogs();
       document.getElementById('locationPreviewText').innerText = locationLabel + ' (±' + Math.round(accuracy) + 'm)';
@@ -1276,6 +1586,7 @@ function renderAttendanceTable() {
       '<td style="padding:0.75rem 1rem; font-family:monospace; font-size:0.8rem; color:var(--accent-light);">' + log.lon + '°</td>' +
       '<td style="padding:0.75rem 1rem; font-size:0.8rem; color:var(--text-muted);">±' + log.accuracy + 'm</td>' +
       '<td style="padding:0.75rem 1rem; font-size:0.82rem; max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + log.location + '">📍 ' + log.location + '</td>' +
+      '<td style="padding:0.75rem 1rem; font-size:0.8rem; color:var(--text-muted); max-width:160px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + (log.note || '') + '">' + (log.note ? '📝 ' + log.note : '—') + '</td>' +
       '<td style="padding:0.75rem 1rem;"><span style="font-size:0.7rem; font-weight:800; padding:0.2rem 0.45rem; border-radius:4px; background:' + (log.role === 'ADMIN' ? 'rgba(221,107,32,0.2)' : 'rgba(49,57,98,0.6)') + '; color:' + (log.role === 'ADMIN' ? '#fbd38d' : '#cbd5e1') + ';">' + log.role + '</span></td>' +
       '<td style="padding:0.75rem 1rem;"><button class="btn btn-ghost geo-map-btn" data-log-id="' + log.id + '" style="font-size:0.75rem; padding:0.25rem 0.6rem; white-space:nowrap; display:flex; align-items:center; gap:0.3rem;">🗺️ View</button></td>';
     tbody.appendChild(tr);
@@ -1331,15 +1642,30 @@ function openGeoMapModal(logId) {
 }
 
 function exportAttendanceCSV() {
-  if (attendanceLogs.length === 0) {
+  if (attendanceLogs.length === 0 && events.filter(e => e.archived).length === 0) {
     triggerNotificationToast('No attendance records to export.');
     return;
   }
-  const headers = ['#', 'Reporter', 'Role', 'Date', 'Time', 'Latitude', 'Longitude', 'Accuracy (m)', 'Location Label'];
+  const headers = ['#', 'Reporter', 'Role', 'Date', 'Time', 'Latitude', 'Longitude', 'Accuracy (m)', 'Location Label', 'Note'];
   const rows = attendanceLogs.map((log, i) =>
-    [i + 1, log.reporter, log.role, log.date, log.time, log.lat, log.lon, log.accuracy, '"' + log.location + '"'].join(',')
+    [i + 1, log.reporter, log.role, log.date, log.time, log.lat, log.lon, log.accuracy, '"' + log.location + '"', '"' + (log.note || '').replace(/"/g, '""') + '"'].join(',')
   );
-  const csv = [headers.join(','), ...rows].join('\n');
+  let csv = [headers.join(','), ...rows].join('\n');
+
+  // Archived Checklist Agenda Items are appended as a second table in the
+  // same file so a filed-away agenda item's history travels with the
+  // attendance export instead of needing a separate download.
+  const archivedEvents = events.filter(e => e.archived);
+  if (archivedEvents.length > 0) {
+    const evtHeaders = ['#', 'Event', 'Target Date', 'Location Note', 'Completed', 'Archived Date'];
+    const evtRows = archivedEvents.map((evt, i) => [
+      i + 1, '"' + evt.name.replace(/"/g, '""') + '"', evt.date,
+      '"' + (evt.locationNote || '').replace(/"/g, '""') + '"',
+      evt.completed ? 'YES' : 'NO', evt.archivedAt || ''
+    ].join(','));
+    csv += '\n\nArchived Checklist Agenda Items\n' + [evtHeaders.join(','), ...evtRows].join('\n');
+  }
+
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1630,18 +1956,27 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('asgTitle').value = '';
     document.getElementById('asgAssignee').value = '';
     triggerNotificationToast('Assignment successfully updated.');
+    // Real-time alert: notify the assignee directly if they're a registered account,
+    // plus anyone @mentioned inside the instruction text itself.
+    const assigneeAccount = registeredUsersDB.find(u => u.name.toLowerCase() === targetedUser.toLowerCase());
+    if (assigneeAccount && currentUser && assigneeAccount.name !== currentUser.name) {
+      dispatchPing(currentUser.name, assigneeAccount.name, 'New task assigned to you: "' + payloadInstruction + '"');
+    }
+    scanAndNotifyMentions(payloadInstruction, 'in a task');
   });
 
   // Save Event
   document.getElementById('saveEventBtn').addEventListener('click', () => {
     const textNode = document.getElementById('evtName').value.trim();
     const targetDateString = document.getElementById('evtDate').value || new Date().toISOString().split('T')[0];
+    const locationNote = document.getElementById('evtLocationNote') ? document.getElementById('evtLocationNote').value.trim() : '';
     if (!textNode) return triggerNotificationToast('Please specify event workspace parameters.');
-    events.push({ id: Date.now(), name: textNode, date: targetDateString, completed: false });
+    events.push({ id: Date.now(), name: textNode, date: targetDateString, completed: false, locationNote: locationNote });
     flushStateToDisk();
     generateEventsTrackerChecklist();
     document.getElementById('addEventModal').classList.remove('active');
     document.getElementById('evtName').value = '';
+    if (document.getElementById('evtLocationNote')) document.getElementById('evtLocationNote').value = '';
     triggerNotificationToast('Checklist element added.');
   });
 
@@ -1723,6 +2058,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Export projects CSV
   document.getElementById('quickExportCSVBtn')?.addEventListener('click', exportProjectsCSV);
 
+  // Generate Activity Summary report
+  document.getElementById('generateActivitySummaryBtn')?.addEventListener('click', generateActivitySummaryReport);
+
   // Sign out
   document.getElementById('signOutBtn').addEventListener('click', () => {
     localStorage.removeItem('jcompass_user');
@@ -1778,5 +2116,6 @@ document.addEventListener('DOMContentLoaded', () => {
     archiveSearchQuery = e.target.value;
     generateArchiveGrid();
     generateArchiveReportsGrid();
+    generateActivitySummaryGrid();
   });
 });
