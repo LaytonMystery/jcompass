@@ -100,6 +100,12 @@
           <button class="theme-chip-btn" data-theme="rust">🍂 Rust</button>
         </div>
       </div>
+      <div class="customizer-field" style="margin-top: 1.5rem;">
+        <label class="customizer-label">Push Alerts</label>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0.15rem 0 0.6rem;">Get a device popup when someone pings you, even if this tab is in the background.</p>
+        <button id="enableNotificationsBtn" class="btn btn-ghost" style="width:100%; font-size:0.85rem;">🔔 Enable Push Alerts</button>
+        <div id="notificationStatusLabel" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.5rem;"></div>
+      </div>
     </div>
   </div>
 
@@ -119,6 +125,8 @@
         </div>
       </div>
     </header>
+
+    <div class="notification-bar-stack" id="notificationBarStack"></div>
 
     <!-- DASHBOARD -->
     <div class="page active" id="page-dashboard">
@@ -364,6 +372,13 @@
         <input type="text" class="search-bar" id="archiveSearchInput" placeholder="Search archived projects...">
       </div>
       <div class="grid" id="archiveGrid"></div>
+
+      <div class="section-header" style="margin-top: 2rem;">
+        <h2 class="section-title">📄 Closed-Out Reports</h2>
+        <span class="archive-count-badge" id="archiveReportsCountBadge">0 filed</span>
+      </div>
+      <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Auto-generated summary reports from assignments and beats filed clear by an editor.</p>
+      <div class="grid" id="archiveReportsGrid"></div>
     </div>
   </main>
 
@@ -617,6 +632,7 @@
   </div>
 
   <div class="toast" id="toast">Operations Log Trace Notification</div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
 </body>
 </html>

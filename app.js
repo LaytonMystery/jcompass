@@ -2,58 +2,230 @@
  * Journalist's Compass v2.0 — Newsroom Operations Terminal
  */
 
+// ===================== SUPABASE REALTIME PINGS =====================
+// Fill these in with your own Supabase project's values (Project Settings →
+// API). The anon/public key is safe to expose in client code — it's meant
+// to be used from the browser and is constrained by your RLS policies, not
+// by secrecy. Leave SUPABASE_URL blank to run the app in local-only mode
+// (pings stay on this device, same as before).
+const SUPABASE_URL = '';        // e.g. 'https://xxxxxxxxxxxx.supabase.co'
+const SUPABASE_ANON_KEY = '';   // e.g. 'eyJhbGciOi...'
+
+let supabaseClient = null;
+let realtimePingsChannel = null;
+
+function isSupabaseConfigured() {
+  return !!(SUPABASE_URL && SUPABASE_ANON_KEY && typeof window.supabase !== 'undefined');
+}
+
+function initSupabaseClient() {
+  if (!isSupabaseConfigured()) {
+    console.info('JCompass: Supabase not configured — pings will stay local to this device/browser.');
+    return;
+  }
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
+
+// Pulls existing pings down from Supabase so a fresh login/device sees
+// history that happened elsewhere, then opens a realtime channel so any
+// NEW ping (from any device) lands here the moment it's sent.
+async function syncRemotePings() {
+  if (!supabaseClient) return;
+  try {
+    const { data, error } = await supabaseClient
+      .from('pings')
+      .select('*')
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    (data || []).forEach(row => mergeIncomingPing(row, false));
+    rebuildApplicationDOMViews();
+  } catch (err) {
+    console.error('JCompass: failed to load pings from Supabase.', err);
+  }
+
+  if (realtimePingsChannel) {
+    supabaseClient.removeChannel(realtimePingsChannel);
+  }
+  realtimePingsChannel = supabaseClient
+    .channel('pings-realtime')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pings' }, (payload) => {
+      mergeIncomingPing(payload.new, true);
+      flushStateToDisk();
+      rebuildApplicationDOMViews();
+    })
+    .subscribe();
+}
+
+// Converts a Supabase "pings" row into the app's existing announcement
+// shape and adds it if it isn't already in memory (avoids duplicates when
+// the initial fetch and a realtime event overlap).
+function mergeIncomingPing(row, isLive) {
+  const localId = 'remote-' + row.id;
+  if (announcements.some(a => a.id === localId)) return;
+  const ann = {
+    id: localId,
+    sender: row.sender,
+    target: row.target,
+    text: row.message,
+    timestamp: new Date(row.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  };
+  announcements.push(ann);
+  if (isLive) notifyIncomingPing(ann);
+}
+
+async function publishPingRemote(payload) {
+  const { error } = await supabaseClient.from('pings').insert({
+    sender: payload.sender,
+    target: payload.target,
+    message: payload.text
+  });
+  if (error) throw error;
+}
+
+// ===================== BROWSER / DEVICE POPUP NOTIFICATIONS =====================
+function refreshNotificationPermissionUI() {
+  const btn = document.getElementById('enableNotificationsBtn');
+  const label = document.getElementById('notificationStatusLabel');
+  if (!btn || !label || !('Notification' in window)) {
+    if (label) label.textContent = 'Push alerts aren\u2019t supported in this browser.';
+    if (btn) btn.style.display = 'none';
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    btn.textContent = '🔔 Push Alerts Enabled';
+    btn.disabled = true;
+    label.textContent = 'You\u2019ll get a device popup for new pings while this tab is open in the background.';
+  } else if (Notification.permission === 'denied') {
+    btn.textContent = '🔕 Push Alerts Blocked';
+    btn.disabled = true;
+    label.textContent = 'Notifications are blocked in your browser/site settings. Re-enable them there to receive pings.';
+  } else {
+    btn.textContent = '🔔 Enable Push Alerts';
+    btn.disabled = false;
+    label.textContent = 'Not enabled yet — pings will only show inside the app.';
+  }
+}
+
+function requestNotificationPermission() {
+  if (!('Notification' in window)) return;
+  Notification.requestPermission().then(() => refreshNotificationPermissionUI());
+}
+
+// Called whenever a ping arrives in realtime. Shows a native OS/device
+// notification popup if permission was granted and this tab is currently
+// in the background (matches "someone pings me while I'm out of the app").
+// If the tab is focused, a lighter in-app toast is used instead so the
+// same ping doesn't announce itself twice.
+function notifyIncomingPing(ann) {
+  if (!currentUser) return;
+  const isPingedToMe = ann.target === currentUser.name;
+  const isBroadcastAll = ann.target === 'ALL';
+  if (!isPingedToMe && !isBroadcastAll) return;
+  if (ann.sender === currentUser.name) return; // don't notify yourself
+
+  const title = isBroadcastAll ? 'JCompass — @All Desks' : 'JCompass — Direct Ping';
+  const body = ann.sender + ': ' + ann.text;
+
+  const canShowNative = ('Notification' in window) && Notification.permission === 'granted';
+  if (canShowNative && document.hidden) {
+    const n = new Notification(title, {
+      body: body,
+      icon: 'favicon.ico',
+      tag: 'jcompass-ping-' + ann.id
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+  } else {
+    triggerNotificationToast(body);
+  }
+}
+
+// ===================== SAFE STORAGE HELPERS =====================
+// A single malformed value in localStorage (partial write, quota overflow,
+// manual edit during testing, etc.) used to throw a SyntaxError at the top
+// of this file on every page load. Because that happened before
+// DOMContentLoaded even registered, the login button's click handler never
+// got attached — so after a refresh the auth screen would sit there and
+// "Authenticate Session" would silently do nothing. safeLoadJSON() below
+// catches that and falls back to the default instead of taking the whole
+// script down with it.
+function safeLoadJSON(key, fallback) {
+  const raw = localStorage.getItem(key);
+  if (raw === null) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return (parsed === null || parsed === undefined) ? fallback : parsed;
+  } catch (err) {
+    console.warn('JCompass: corrupted localStorage entry "' + key + '" — resetting to default.', err);
+    try { localStorage.removeItem(key); } catch (e) { /* ignore */ }
+    return fallback;
+  }
+}
+
+function safeSaveJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (err) {
+    console.error('JCompass: failed to save "' + key + '" to localStorage.', err);
+    return false;
+  }
+}
+
 // ===================== DATA STATE =====================
-let currentUser = JSON.parse(localStorage.getItem('jcompass_user')) || null;
+let currentUser = safeLoadJSON('jcompass_user', null);
 let currentFilter = 'ALL';
 let searchQuery = '';
 let calendarMonth = new Date().getMonth();
 let calendarYear = new Date().getFullYear();
 let sourceSearchQuery = '';
 
-let registeredUsersDB = JSON.parse(localStorage.getItem('jcompass_accounts_db')) || [
+let registeredUsersDB = safeLoadJSON('jcompass_accounts_db', [
   { name: 'Admin Account', pass: 'admin123', role: 'ADMIN', code: 'AA', created: 'Aug 11, 2026' },
   { name: 'Staff Reporter', pass: 'staff123', role: 'STAFF', code: 'SR', created: 'Aug 11, 2026' }
-];
+]);
 
-let projects = JSON.parse(localStorage.getItem('jcompass_projects')) || [
+let projects = safeLoadJSON('jcompass_projects', [
   { id: 101, title: 'Global Supply Route Friction Analytics', category: 'INVESTIGATIVE', deadline: '2026-08-12', status: 'ACTIVE', priority: 'HIGH', progress: 65, reporter: 'Staff Reporter', notes: 'Key source: Trade Ministry official. Follow up on embargo docs.', tags: 'exclusive,urgent', archived: false },
   { id: 102, title: 'Mayoral Campaign Expenditure Audits', category: 'BREAKING', deadline: '2026-08-20', status: 'IN REVIEW', priority: 'HIGH', progress: 80, reporter: 'Staff Reporter', notes: 'FEC filings cross-referenced. Awaiting legal review.', tags: 'follow-up', archived: false },
   { id: 103, title: 'Local Tech Ecosystem Multi-Tier Integration', category: 'FEATURES', deadline: '2026-08-28', status: 'FILED', priority: 'MEDIUM', progress: 100, reporter: '', notes: '', tags: '', archived: false }
-];
+]);
 
-let assignments = JSON.parse(localStorage.getItem('jcompass_assignments')) || [
+let assignments = safeLoadJSON('jcompass_assignments', [
   { id: 201, title: 'Interview Chief of Police regarding recent data breach anomalies', assignee: 'Staff Reporter' }
-];
+]);
 
-let beats = JSON.parse(localStorage.getItem('jcompass_beats')) || [
+let beats = safeLoadJSON('jcompass_beats', [
   { id: 301, name: 'City Hall Hallways Desk', reporter: 'Lead Editor', priority: 'HIGH', imgData: '' }
-];
+]);
 
-let events = JSON.parse(localStorage.getItem('jcompass_events')) || [
+let events = safeLoadJSON('jcompass_events', [
   { id: 401, name: 'Press Conference Security Briefing Room B', date: '2026-08-18', completed: false }
-];
+]);
 
-let announcements = JSON.parse(localStorage.getItem('jcompass_announcements')) || [
+let announcements = safeLoadJSON('jcompass_announcements', [
   { id: 501, sender: 'Admin Account', target: 'ALL', text: 'All field correspondents report telemetry logs before 1800 hours sync.', timestamp: 'Aug 11, 2026' }
-];
+]);
 
-let archiveRequests = JSON.parse(localStorage.getItem('jcompass_archive_requests')) || [];
-let attendanceLogs = JSON.parse(localStorage.getItem('jcompass_attendance')) || [];
-let sources = JSON.parse(localStorage.getItem('jcompass_sources')) || [];
+let archiveRequests = safeLoadJSON('jcompass_archive_requests', []);
+let attendanceLogs = safeLoadJSON('jcompass_attendance', []);
+let sources = safeLoadJSON('jcompass_sources', []);
+let archivedReports = safeLoadJSON('jcompass_archived_reports', []);
+let dismissedNoticeIds = safeLoadJSON('jcompass_dismissed_notices', []);
 let attendanceSearchQuery = '';
 let archiveSearchQuery = '';
 
 // ===================== PERSISTENCE =====================
 function flushStateToDisk() {
-  localStorage.setItem('jcompass_accounts_db', JSON.stringify(registeredUsersDB));
-  localStorage.setItem('jcompass_projects', JSON.stringify(projects));
-  localStorage.setItem('jcompass_assignments', JSON.stringify(assignments));
-  localStorage.setItem('jcompass_beats', JSON.stringify(beats));
-  localStorage.setItem('jcompass_events', JSON.stringify(events));
-  localStorage.setItem('jcompass_announcements', JSON.stringify(announcements));
-  localStorage.setItem('jcompass_archive_requests', JSON.stringify(archiveRequests));
-  localStorage.setItem('jcompass_attendance', JSON.stringify(attendanceLogs));
-  localStorage.setItem('jcompass_sources', JSON.stringify(sources));
+  safeSaveJSON('jcompass_accounts_db', registeredUsersDB);
+  safeSaveJSON('jcompass_projects', projects);
+  safeSaveJSON('jcompass_assignments', assignments);
+  safeSaveJSON('jcompass_beats', beats);
+  safeSaveJSON('jcompass_events', events);
+  safeSaveJSON('jcompass_announcements', announcements);
+  safeSaveJSON('jcompass_archive_requests', archiveRequests);
+  safeSaveJSON('jcompass_attendance', attendanceLogs);
+  safeSaveJSON('jcompass_sources', sources);
+  safeSaveJSON('jcompass_archived_reports', archivedReports);
 }
 
 // ===================== AUTH & SESSION =====================
@@ -65,6 +237,7 @@ function enforceSessionGuard() {
     document.body.setAttribute('data-user-clearance', currentUser.role);
     evaluateClearancePermissions();
     rebuildApplicationDOMViews();
+    if (supabaseClient) syncRemotePings();
   } else {
     gateOverlay.style.display = 'flex';
   }
@@ -123,8 +296,118 @@ function rebuildApplicationDOMViews() {
   generateDeadlineCalendarGrid();
   initAttendancePage();
   generateArchiveGrid();
+  generateArchiveReportsGrid();
   generateSourcesGrid();
   generateUsersTable();
+  generateNotificationBar();
+}
+
+// ===================== NOTIFICATION BAR =====================
+// Persistent, dismissible banners shown across every page (not just the
+// dashboard) for things that need attention right now: overdue/due-soon
+// projects, unread direct pings, and — for admins — pending archive
+// requests. Count-based notices are keyed by their count (e.g. "overdue-3")
+// so dismissing one only silences that specific count; if the number
+// changes it resurfaces as a "new" notice. Direct pings are keyed by their
+// announcement id so each one only needs to be dismissed once, ever.
+function dismissNotice(noticeId) {
+  if (!dismissedNoticeIds.includes(noticeId)) {
+    dismissedNoticeIds.push(noticeId);
+    safeSaveJSON('jcompass_dismissed_notices', dismissedNoticeIds);
+  }
+  generateNotificationBar();
+}
+
+function generateNotificationBar() {
+  const container = document.getElementById('notificationBarStack');
+  if (!container || !currentUser) return;
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const active = projects.filter(p => !p.archived);
+  const overdue = active.filter(p => {
+    if (!p.deadline || p.status === 'FILED' || p.status === 'PUBLISHED') return false;
+    return new Date(p.deadline) < today;
+  });
+  const dueSoon = active.filter(p => {
+    if (!p.deadline || p.status === 'FILED' || p.status === 'PUBLISHED') return false;
+    const d = new Date(p.deadline);
+    const diff = Math.ceil((d - today) / (1000 * 60 * 60 * 24));
+    return diff >= 0 && diff <= 3;
+  });
+
+  const notices = [];
+
+  if (overdue.length > 0) {
+    notices.push({
+      id: 'overdue-' + overdue.length,
+      type: 'danger',
+      icon: '⚠',
+      text: overdue.length + ' project' + (overdue.length > 1 ? 's are' : ' is') + ' overdue.',
+      actionLabel: 'View Dashboard',
+      actionPage: 'dashboard'
+    });
+  }
+  if (dueSoon.length > 0) {
+    notices.push({
+      id: 'duesoon-' + dueSoon.length,
+      type: 'warning',
+      icon: '⏳',
+      text: dueSoon.length + ' project' + (dueSoon.length > 1 ? 's are' : ' is') + ' due within 3 days.',
+      actionLabel: 'View Dashboard',
+      actionPage: 'dashboard'
+    });
+  }
+  announcements.forEach(ann => {
+    if (ann.target === currentUser.name) {
+      notices.push({
+        id: 'ann-' + ann.id,
+        type: 'info',
+        icon: '📌',
+        text: 'Direct ping from ' + ann.sender + ': "' + ann.text + '"',
+        actionLabel: null,
+        actionPage: null
+      });
+    }
+  });
+  if (currentUser.role === 'ADMIN') {
+    const pending = archiveRequests.filter(r => r.status === 'PENDING');
+    if (pending.length > 0) {
+      notices.push({
+        id: 'archivereq-' + pending.length,
+        type: 'info',
+        icon: '🗄',
+        text: pending.length + ' archive request' + (pending.length > 1 ? 's' : '') + ' awaiting review.',
+        actionLabel: 'View Archive',
+        actionPage: 'archive'
+      });
+    }
+  }
+
+  const visible = notices.filter(n => !dismissedNoticeIds.includes(n.id));
+  container.innerHTML = visible.map(n =>
+    '<div class="notice-bar notice-' + n.type + '" data-notice-id="' + n.id + '">' +
+      '<span class="notice-icon">' + n.icon + '</span>' +
+      '<span class="notice-text">' + n.text + '</span>' +
+      '<div class="notice-actions">' +
+      (n.actionLabel ? '<button class="notice-action-btn" data-page="' + n.actionPage + '">' + n.actionLabel + '</button>' : '') +
+      '<button class="notice-dismiss-btn" title="Dismiss">✕</button>' +
+      '</div>' +
+    '</div>'
+  ).join('');
+
+  container.querySelectorAll('.notice-dismiss-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const bar = btn.closest('.notice-bar');
+      dismissNotice(bar.dataset.noticeId);
+    });
+  });
+  container.querySelectorAll('.notice-action-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetPage = btn.dataset.page;
+      const navItem = document.querySelector('.nav-item[data-page="' + targetPage + '"]');
+      if (navItem) navItem.click();
+    });
+  });
 }
 
 // ===================== DASHBOARD STATS =====================
@@ -502,6 +785,57 @@ function generateArchiveGrid() {
   });
 }
 
+// ===================== ARCHIVED SUMMARY REPORTS (assignments & beats) =====================
+function generateArchiveReportsGrid() {
+  const container = document.getElementById('archiveReportsGrid');
+  const countBadge = document.getElementById('archiveReportsCountBadge');
+  if (!container) return;
+  container.innerHTML = '';
+  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+  if (!isAdmin) {
+    if (countBadge) countBadge.style.display = 'none';
+    return;
+  }
+  const query = archiveSearchQuery.toLowerCase();
+  const reports = archivedReports.filter(r =>
+    r.title.toLowerCase().includes(query) || r.summary.toLowerCase().includes(query)
+  );
+  if (countBadge) {
+    countBadge.style.display = '';
+    countBadge.innerText = archivedReports.length + ' filed';
+  }
+  if (reports.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'card';
+    empty.style.cssText = 'grid-column:1/-1; text-align:center; color:var(--text-muted); padding:2rem;';
+    empty.innerText = 'No closed-out reports yet. Filing an assignment or beat clear generates one automatically.';
+    container.appendChild(empty);
+    return;
+  }
+  reports.slice().reverse().forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const typeIcon = r.type === 'BEAT' ? '📰' : '📋';
+    const typeLabel = r.type === 'BEAT' ? 'Beat Closure' : 'Assignment Closure';
+    card.innerHTML =
+      '<div class="card-category">' + typeIcon + ' ' + typeLabel + '</div>' +
+      '<div class="card-title" style="font-size:1.0rem;">' + r.title + '</div>' +
+      '<div style="font-size:0.82rem; color:var(--text-muted); line-height:1.5;">' + r.summary + '</div>' +
+      '<div class="card-meta"><span>🖊 Filed by ' + r.closedBy + '</span><span>📅 ' + r.timestamp + '</span></div>' +
+      '<div style="display:flex; padding-top:0.5rem; border-top:1px solid rgba(255,255,255,0.05);"><button class="card-action-btn delete-report-btn" data-id="' + r.id + '" style="flex:1; color:var(--danger);">🗑 Delete Report</button></div>';
+    container.appendChild(card);
+  });
+  container.querySelectorAll('.delete-report-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!confirm('Permanently delete this archived report? This cannot be undone.')) return;
+      archivedReports = archivedReports.filter(r => r.id !== parseInt(btn.dataset.id));
+      flushStateToDisk();
+      generateArchiveReportsGrid();
+      triggerNotificationToast('Report permanently deleted.');
+    });
+  });
+}
+
 window.directRouteTaskTrigger = function(targetStaffName) {
   const modal = document.getElementById('addAssignmentModal');
   if (!modal) return;
@@ -521,11 +855,24 @@ function processAnnouncementPublishing() {
     text: input.value.trim(),
     timestamp: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   };
-  announcements.push(payload);
-  flushStateToDisk();
-  generateAnnouncementsStream();
   input.value = '';
-  triggerNotificationToast('Broadcast alert dispatched to workspace stream.');
+
+  if (supabaseClient) {
+    // Don't add it locally here — the realtime subscription (open on every
+    // logged-in device, including this one) adds it as soon as Supabase
+    // confirms the insert, which keeps every device's view identical.
+    publishPingRemote(payload)
+      .then(() => triggerNotificationToast('Broadcast alert dispatched to workspace stream.'))
+      .catch(err => {
+        console.error('JCompass: failed to publish ping to Supabase.', err);
+        triggerNotificationToast('Could not reach the server — ping was not sent.');
+      });
+  } else {
+    announcements.push(payload);
+    flushStateToDisk();
+    generateAnnouncementsStream();
+    triggerNotificationToast('Broadcast alert dispatched to workspace stream. (Local only — connect Supabase for cross-device delivery.)');
+  }
 }
 
 // ===================== BEATS, ASSIGNMENTS, EVENTS =====================
@@ -539,14 +886,38 @@ function generateBeatsGrid() {
     let imageElement = b.imgData
       ? '<img src="' + b.imgData + '" class="beat-card-img" alt="Beat Visual Descriptor">'
       : '<div class="beat-card-img" style="display:flex; align-items:center; justify-content:center; color: var(--text-muted); font-size:2rem;">📰</div>';
+    let actionBtnHtml = currentUser && currentUser.role === 'ADMIN'
+      ? '<button class="btn btn-ghost" style="padding:0.25rem 0.5rem; font-size:0.75rem;" onclick="processBeatResolve(' + b.id + ')">File Clear</button>'
+      : '<span style="font-size:0.75rem; color:var(--accent-light); font-weight:700;">● ACTIVE</span>';
     beatNode.innerHTML =
       '<span class="priority-flag priority-' + b.priority + '">' + b.priority + '</span>' +
       imageElement +
       '<div class="card-title" style="margin-top:0.5rem;">' + b.name + '</div>' +
-      '<div style="font-size: 0.85rem; color: var(--text-muted);">Correspondent: <b>' + b.reporter + '</b></div>';
+      '<div style="font-size: 0.85rem; color: var(--text-muted); display:flex; justify-content:space-between; align-items:center;"><span>Correspondent: <b>' + b.reporter + '</b></span>' + actionBtnHtml + '</div>';
     container.appendChild(beatNode);
   });
 }
+
+window.processBeatResolve = function(targetId) {
+  const b = beats.find(x => x.id === targetId);
+  if (!b) return;
+  if (!confirm('File this beat clear? A summary report will be generated and moved to the Archive Vault.')) return;
+  const closedDate = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  archivedReports.push({
+    id: Date.now(),
+    type: 'BEAT',
+    title: b.name,
+    summary: 'Beat desk "' + b.name + '" (Priority: ' + b.priority + ') was covered by ' + b.reporter + ' and closed out by ' + (currentUser ? currentUser.name : 'an editor') + ' on ' + closedDate + '.',
+    meta: { reporter: b.reporter, priority: b.priority },
+    closedBy: currentUser ? currentUser.name : 'Unknown',
+    timestamp: closedDate
+  });
+  beats = beats.filter(x => x.id !== targetId);
+  flushStateToDisk();
+  generateBeatsGrid();
+  generateArchiveReportsGrid();
+  triggerNotificationToast('Beat filed clear — summary report archived.');
+};
 
 function generateAssignmentsGrid() {
   const container = document.getElementById('assignmentsGrid');
@@ -566,10 +937,23 @@ function generateAssignmentsGrid() {
 }
 
 window.processAssignmentResolve = function(targetId) {
-  assignments = assignments.filter(a => a.id !== targetId);
+  const a = assignments.find(x => x.id === targetId);
+  if (!a) return;
+  const closedDate = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  archivedReports.push({
+    id: Date.now(),
+    type: 'ASSIGNMENT',
+    title: a.title,
+    summary: 'Assignment "' + a.title + '" was dispatched to ' + a.assignee + ' and filed clear by ' + (currentUser ? currentUser.name : 'an editor') + ' on ' + closedDate + '. No open follow-ups remain on this directive.',
+    meta: { assignee: a.assignee },
+    closedBy: currentUser ? currentUser.name : 'Unknown',
+    timestamp: closedDate
+  });
+  assignments = assignments.filter(x => x.id !== targetId);
   flushStateToDisk();
   generateAssignmentsGrid();
-  triggerNotificationToast('Assignment directive resolved.');
+  generateArchiveReportsGrid();
+  triggerNotificationToast('Assignment filed clear — summary report archived.');
 };
 
 function generateEventsTrackerChecklist() {
@@ -1049,14 +1433,39 @@ function triggerNotificationToast(strMessage) {
 
 // ===================== INITIALIZATION =====================
 document.addEventListener('DOMContentLoaded', () => {
-  const activeProfileTheme = localStorage.getItem('jcompass_theme') || 'forest';
-  document.body.setAttribute('data-theme-profile', activeProfileTheme);
-  const targetActiveChip = document.querySelector('.theme-chip-btn[data-theme="' + activeProfileTheme + '"]');
-  if (targetActiveChip) {
-    document.querySelectorAll('.theme-chip-btn').forEach(c => c.classList.remove('active'));
-    targetActiveChip.classList.add('active');
+  // Auth wiring goes first and unconditionally, before anything else in this
+  // block runs. That way, even if something below throws (a rendering bug,
+  // a bad data record, etc.), the login form is already interactive and a
+  // refresh never leaves the user stuck on a dead auth screen.
+  const loginBtn = document.getElementById('loginSubmitBtn');
+  if (loginBtn) loginBtn.addEventListener('click', processCredentialsAuthentication);
+  ['username', 'password'].forEach(id => {
+    const field = document.getElementById(id);
+    if (field) field.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') processCredentialsAuthentication();
+    });
+  });
+
+  try {
+    initSupabaseClient();
+    const activeProfileTheme = localStorage.getItem('jcompass_theme') || 'forest';
+    document.body.setAttribute('data-theme-profile', activeProfileTheme);
+    const targetActiveChip = document.querySelector('.theme-chip-btn[data-theme="' + activeProfileTheme + '"]');
+    if (targetActiveChip) {
+      document.querySelectorAll('.theme-chip-btn').forEach(c => c.classList.remove('active'));
+      targetActiveChip.classList.add('active');
+    }
+    enforceSessionGuard();
+  } catch (err) {
+    console.error('JCompass: session/theme init failed, continuing with a fresh login screen.', err);
+    const gateOverlay = document.getElementById('authScreen');
+    if (gateOverlay) gateOverlay.style.display = 'flex';
   }
-  enforceSessionGuard();
+
+  // Push notification permission toggle
+  refreshNotificationPermissionUI();
+  const notifyBtn = document.getElementById('enableNotificationsBtn');
+  if (notifyBtn) notifyBtn.addEventListener('click', requestNotificationPermission);
 
   // Control Tray
   const userChipBtn = document.getElementById('userAvatarBtn');
@@ -1076,8 +1485,7 @@ document.addEventListener('DOMContentLoaded', () => {
     trayOverlay.addEventListener('click', closeTrayWorkflow);
   }
 
-  // Auth
-  document.getElementById('loginSubmitBtn').addEventListener('click', processCredentialsAuthentication);
+  // Announcements
   document.getElementById('submitAnnouncementBtn').addEventListener('click', processAnnouncementPublishing);
 
   // Navigation
@@ -1319,6 +1727,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('signOutBtn').addEventListener('click', () => {
     localStorage.removeItem('jcompass_user');
     currentUser = null;
+    if (supabaseClient && realtimePingsChannel) {
+      supabaseClient.removeChannel(realtimePingsChannel);
+      realtimePingsChannel = null;
+    }
+    const barStack = document.getElementById('notificationBarStack');
+    if (barStack) barStack.innerHTML = '';
     triggerNotificationToast('Session terminated safely. Resetting workspace profiles...');
     setTimeout(() => { location.reload(); }, 600);
   });
@@ -1363,5 +1777,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('archiveSearchInput')?.addEventListener('input', (e) => {
     archiveSearchQuery = e.target.value;
     generateArchiveGrid();
+    generateArchiveReportsGrid();
   });
 });

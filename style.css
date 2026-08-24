@@ -250,6 +250,35 @@ body[data-user-clearance="ADMIN"] .clearance-badge { background: rgba(221, 107, 
 .user-avatar { width: 30px; height: 30px; background-color: var(--accent-light); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; }
 
 /* ==========================================================================
+   NOTIFICATION BAR
+   ========================================================================== */
+.notification-bar-stack { display: flex; flex-direction: column; gap: 0.5rem; margin: -1rem 0 1.5rem; }
+.notice-bar {
+  display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 1.1rem;
+  border-radius: 10px; border: 1px solid var(--border-color); font-size: 0.85rem;
+  animation: noticeSlideIn 0.25s ease;
+}
+@keyframes noticeSlideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+.notice-icon { font-size: 1rem; flex-shrink: 0; }
+.notice-text { flex: 1; line-height: 1.4; }
+.notice-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+.notice-action-btn {
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); color: var(--text-main);
+  font-size: 0.75rem; font-weight: 600; padding: 0.3rem 0.65rem; border-radius: 6px; cursor: pointer;
+  transition: background 0.2s;
+}
+.notice-action-btn:hover { background: rgba(255,255,255,0.2); }
+.notice-dismiss-btn {
+  background: none; border: none; color: var(--text-muted); font-size: 0.9rem; cursor: pointer;
+  line-height: 1; padding: 0.15rem 0.3rem; border-radius: 4px; transition: color 0.2s, background 0.2s;
+}
+.notice-dismiss-btn:hover { color: var(--text-main); background: rgba(255,255,255,0.1); }
+.notice-danger { background: rgba(229, 62, 62, 0.12); border-color: rgba(229, 62, 62, 0.35); color: #fc8181; }
+.notice-warning { background: rgba(221, 107, 32, 0.12); border-color: rgba(221, 107, 32, 0.35); color: #fbd38d; }
+.notice-info { background: rgba(76, 110, 73, 0.15); border-color: rgba(76, 110, 73, 0.4); color: #cdeecb; }
+.notice-danger .notice-text, .notice-warning .notice-text, .notice-info .notice-text { color: var(--text-main); }
+
+/* ==========================================================================
    STATS GRID
    ========================================================================== */
 .stats-grid {
