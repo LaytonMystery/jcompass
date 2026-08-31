@@ -1366,3 +1366,58 @@ if (document.readyState === 'loading') {
 } else {
   initializeApp();
 }
+
+//
+//
+//
+
+// Settings Gear Button
+const settingsGearBtn = document.getElementById('settingsGearBtn');
+if (settingsGearBtn) {
+  settingsGearBtn.addEventListener('click', () => {
+    const tray = document.getElementById('controlTray');
+    const trayOverlay = document.getElementById('controlTrayOverlay');
+    if (tray) tray.classList.add('active');
+    if (trayOverlay) trayOverlay.classList.add('active');
+  });
+}
+
+// Settings Sidebar Button
+const settingsSidebarBtn = document.getElementById('settingsSidebarBtn');
+if (settingsSidebarBtn) {
+  settingsSidebarBtn.addEventListener('click', () => {
+    const tray = document.getElementById('controlTray');
+    const trayOverlay = document.getElementById('controlTrayOverlay');
+    if (tray) tray.classList.add('active');
+    if (trayOverlay) trayOverlay.classList.add('active');
+  });
+}
+
+// User Chip Click (existing)
+const userChip = document.getElementById('userAvatarBtn');
+if (userChip) {
+  userChip.addEventListener('click', () => {
+    const tray = document.getElementById('controlTray');
+    const trayOverlay = document.getElementById('controlTrayOverlay');
+    if (tray) tray.classList.add('active');
+    if (trayOverlay) trayOverlay.classList.add('active');
+  });
+}
+
+// Close Tray
+const trayClose = document.getElementById('controlTrayCloseBtn');
+const trayOverlay = document.getElementById('controlTrayOverlay');
+if (trayClose) {
+  trayClose.addEventListener('click', () => {
+    const tray = document.getElementById('controlTray');
+    if (tray) tray.classList.remove('active');
+    if (trayOverlay) trayOverlay.classList.remove('active');
+  });
+}
+if (trayOverlay) {
+  trayOverlay.addEventListener('click', () => {
+    const tray = document.getElementById('controlTray');
+    if (tray) tray.classList.remove('active');
+    trayOverlay.classList.remove('active');
+  });
+}
