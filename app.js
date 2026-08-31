@@ -1427,7 +1427,7 @@ if (trayOverlay) {
 }
 // ===================== ONESIGNAL PUSH NOTIFICATIONS =====================
 const ONESIGNAL_APP_ID = 'e76cbe01-1a76-4f3d-a45d-9d155a126093';
-const ONESIGNAL_API_KEY = 'YOUR_REST_API_KEY'; // Get from OneSignal dashboard
+const ONESIGNAL_API_KEY = 'os_v2_app_45wl4ai2ozht3jc5tukvuetasocbd7a6dhwu2amqs23bpvmhaaeqpcgmitmhidymddsixetmj4uovgolydndk7lgmszycyc43sqhw4q';
 
 async function sendPushNotification(title, message, targetUserName = null) {
   try {
