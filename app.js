@@ -1494,7 +1494,6 @@ function dispatchPing(sender, target, text) {
     );
   }
 }
-
 // Set external user ID when logged in
 async function setOneSignalUser(userName) {
   if (window.OneSignal) {
