@@ -1432,7 +1432,7 @@ const ONESIGNAL_API_KEY = 'os_v2_app_45wl4ai2ozht3jc5tukvuetasocbd7a6dhwu2amqs23
 async function sendPushNotification(title, message, targetUserName = null) {
   try {
     const notificationData = {
-      app_id: ONESIGNAL_APP_ID,
+      app_id: 'e76cbe01-1a76-4f3d-a45d-9d155a126093',
       contents: { en: message },
       headings: { en: title },
       priority: 10,
@@ -1441,7 +1441,6 @@ async function sendPushNotification(title, message, targetUserName = null) {
       chrome_web_badge: 'https://cdn-icons-png.flaticon.com/512/148/148813.png',
     };
     
-    // If targeting specific user, use their name as external ID
     if (targetUserName) {
       notificationData.include_external_user_ids = [targetUserName];
     } else {
@@ -1452,12 +1451,14 @@ async function sendPushNotification(title, message, targetUserName = null) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Basic ' + ONESIGNAL_API_KEY
+        'Authorization': 'Key os_v2_app_45wl4ai2ozht3jc5tukvuetasocbd7a6dhwu2amqs23bpvmhaaeqpcgmitmhidymddsixetmj4uovgolydndk7lgmszycyc43sqhw4q'
       },
       body: JSON.stringify(notificationData)
     });
     
-    return await response.json();
+    const result = await response.json();
+    console.log('Push notification sent:', result);
+    return result;
   } catch (err) {
     console.error('Push notification failed:', err);
   }
