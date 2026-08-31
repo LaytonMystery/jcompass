@@ -1,15 +1,23 @@
 /**
- * Journalist's Compass v2.0 — Newsroom Operations Terminal
- * Complete version with all functions
+ * ╔══════════════════════════════════════════════════════════════════════╗
+ * ║  JOURNALIST'S COMPASS v2.0 — Newsroom Operations Terminal           ║
+ * ║  A complete newsroom management dashboard for journalists            ║
+ * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
-// ===================== SUPABASE CONFIGURATION =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 1: CONFIGURATION & ENVIRONMENT
+// ═══════════════════════════════════════════════════════════════════════
+
 const SUPABASE_URL = 'https://odqfqaywzwvxkvqptzxo.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_6CWGOKOIj4aXmRpidG6dVA_nYvcctoP';
 
 let supabaseClient = null;
 let realtimePingsChannel = null;
 let realtimeAttendanceChannel = null;
+
+// ── Supabase Client Management ────────────────────────────────────────
 
 function isSupabaseConfigured() {
   return !!(SUPABASE_URL && SUPABASE_ANON_KEY && typeof window.supabase !== 'undefined');
@@ -24,7 +32,11 @@ function initSupabaseClient() {
   console.log('JCompass: Supabase client initialized.');
 }
 
-// ===================== SAFE STORAGE HELPERS =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 2: SAFE STORAGE UTILITIES
+// ═══════════════════════════════════════════════════════════════════════
+
 function safeLoadJSON(key, fallback) {
   const raw = localStorage.getItem(key);
   if (raw === null) return fallback;
@@ -48,7 +60,13 @@ function safeSaveJSON(key, value) {
   }
 }
 
-// ===================== DATA STATE =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 3: APPLICATION STATE
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── Session & UI State ────────────────────────────────────────────────
+
 let currentUser = safeLoadJSON('jcompass_user', null);
 let currentFilter = 'ALL';
 let searchQuery = '';
@@ -58,6 +76,8 @@ let sourceSearchQuery = '';
 let attendanceSearchQuery = '';
 let archiveSearchQuery = '';
 let activeProfileId = null;
+
+// ── Data Stores ───────────────────────────────────────────────────────
 
 let registeredUsersDB = safeLoadJSON('jcompass_accounts_db', null);
 if (!registeredUsersDB || registeredUsersDB.length === 0) {
@@ -98,7 +118,11 @@ let archivedReports = safeLoadJSON('jcompass_archived_reports', []);
 let activitySummaries = safeLoadJSON('jcompass_activity_summaries', []);
 let dismissedNoticeIds = safeLoadJSON('jcompass_dismissed_notices', []);
 
-// ===================== PERSISTENCE =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 4: PERSISTENCE LAYER
+// ═══════════════════════════════════════════════════════════════════════
+
 function flushStateToDisk() {
   safeSaveJSON('jcompass_accounts_db', registeredUsersDB);
   safeSaveJSON('jcompass_projects', projects);
@@ -114,7 +138,13 @@ function flushStateToDisk() {
   safeSaveJSON('jcompass_source_removal_requests', sourceRemovalRequests);
 }
 
-// ===================== SUPABASE SYNC =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 5: SUPABASE REMOTE SYNC
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── Pings / Announcements Sync ────────────────────────────────────────
+
 async function syncRemotePings() {
   if (!supabaseClient) return;
   try {
@@ -135,6 +165,26 @@ async function syncRemotePings() {
     })
     .subscribe();
 }
+
+function mergeIncomingPing(row, isLive) {
+  const localId = 'remote-' + row.id;
+  if (announcements.some(a => a.id === localId)) return;
+  const ann = {
+    id: localId, sender: row.sender, target: row.target, text: row.message,
+    timestamp: new Date(row.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  };
+  announcements.push(ann);
+  if (isLive) notifyIncomingPing(ann);
+}
+
+async function publishPingRemote(payload) {
+  const { error } = await supabaseClient.from('pings').insert({
+    sender: payload.sender, target: payload.target, message: payload.text
+  });
+  if (error) throw error;
+}
+
+// ── Attendance Sync ───────────────────────────────────────────────────
 
 async function syncRemoteAttendance() {
   if (!supabaseClient) return;
@@ -177,24 +227,6 @@ async function syncRemoteAttendance() {
     .subscribe();
 }
 
-function mergeIncomingPing(row, isLive) {
-  const localId = 'remote-' + row.id;
-  if (announcements.some(a => a.id === localId)) return;
-  const ann = {
-    id: localId, sender: row.sender, target: row.target, text: row.message,
-    timestamp: new Date(row.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  };
-  announcements.push(ann);
-  if (isLive) notifyIncomingPing(ann);
-}
-
-async function publishPingRemote(payload) {
-  const { error } = await supabaseClient.from('pings').insert({
-    sender: payload.sender, target: payload.target, message: payload.text
-  });
-  if (error) throw error;
-}
-
 async function publishAttendanceRemote(entry) {
   if (!supabaseClient) return;
   try {
@@ -209,7 +241,41 @@ async function publishAttendanceRemote(entry) {
   }
 }
 
-// ===================== NOTIFICATIONS =====================
+// ── Full Data Sync ────────────────────────────────────────────────────
+
+async function syncAllDataFromSupabase() {
+  if (!supabaseClient) return;
+
+  const syncMap = [
+    { table: 'projects',    store: 'projects',    mapper: p => ({ id: p.id, title: p.title, category: p.category, deadline: p.deadline, status: p.status, priority: p.priority, progress: p.progress, reporter: p.reporter || '', notes: p.notes || '', tags: p.tags || '', archived: p.archived || false }) },
+    { table: 'assignments', store: 'assignments', mapper: a => ({ id: a.id, title: a.title, assignee: a.assignee || '' }) },
+    { table: 'beats',       store: 'beats',       mapper: b => ({ id: b.id, name: b.name, reporter: b.reporter || '', priority: b.priority || 'MEDIUM', imgData: b.img_data || '' }) },
+    { table: 'sources',     store: 'sources',     mapper: s => ({ id: s.id, name: s.name, beat: s.beat || '', contact: s.contact || '', reliability: s.reliability || 'MEDIUM', notes: s.notes || '', createdBy: s.created_by || 'Unknown' }) },
+    { table: 'events',      store: 'events',      mapper: e => ({ id: e.id, name: e.name, date: e.date, completed: e.completed || false, archived: e.archived || false, locationNote: e.location_note || '' }) },
+    { table: 'users',       store: 'registeredUsersDB', mapper: u => ({ name: u.name, pass: u.pass, role: u.role, code: u.code, created: new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }) }
+  ];
+
+  for (const { table, store, mapper } of syncMap) {
+    try {
+      const { data } = await supabaseClient.from(table).select('*');
+      if (data && data.length > 0) {
+        window[store] = data.map(mapper);
+      }
+    } catch (err) {
+      console.error('Sync ' + table + ' failed:', err);
+    }
+  }
+
+  flushStateToDisk();
+  rebuildApplicationDOMViews();
+  console.log('✅ All data synced from Supabase');
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 6: NOTIFICATIONS & PINGS
+// ═══════════════════════════════════════════════════════════════════════
+
 function refreshNotificationPermissionUI() {
   const btn = document.getElementById('enableNotificationsBtn');
   const label = document.getElementById('notificationStatusLabel');
@@ -244,9 +310,11 @@ function notifyIncomingPing(ann) {
   const isBroadcastAll = ann.target === 'ALL';
   if (!isPingedToMe && !isBroadcastAll) return;
   if (ann.sender === currentUser.name) return;
+
   const title = isBroadcastAll ? 'JCompass — @All Desks' : 'JCompass — Direct Ping';
   const body = ann.sender + ': ' + ann.text;
   const canShowNative = ('Notification' in window) && Notification.permission === 'granted';
+
   if (canShowNative && document.hidden) {
     const n = new Notification(title, { body: body, icon: 'https://cdn-icons-png.flaticon.com/512/148/148813.png' });
     n.onclick = () => { window.focus(); n.close(); };
@@ -279,7 +347,11 @@ function dispatchPing(sender, target, text) {
   }
 }
 
-// ===================== AUTH =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 7: AUTHENTICATION & SESSION MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════
+
 function enforceSessionGuard() {
   const gateOverlay = document.getElementById('authScreen');
   if (!gateOverlay) return;
@@ -315,17 +387,24 @@ function processCredentialsAuthentication() {
 
 function evaluateClearancePermissions() {
   if (!currentUser) return;
+
+  // Update UI elements
   const targetLabel = document.getElementById('displayName');
   const targetRole = document.getElementById('displayRole');
   const avatarBadge = document.getElementById('avatarBadgeIcon');
   const sidebarInput = document.getElementById('sidebarNameInput');
+
   if (targetLabel) targetLabel.innerText = currentUser.name;
   if (targetRole) targetRole.innerText = currentUser.role;
   if (avatarBadge) avatarBadge.innerText = currentUser.code;
   if (sidebarInput) sidebarInput.value = currentUser.name;
+
+  // Admin-only navigation
   document.querySelectorAll('.admin-only-nav').forEach(el => {
     el.style.display = (currentUser.role === 'ADMIN') ? '' : 'none';
   });
+
+  // Ping target dropdown
   const pingSelect = document.getElementById('announcePingTarget');
   if (pingSelect) {
     pingSelect.innerHTML = '<option value="ALL">@All Desks</option>';
@@ -337,7 +416,11 @@ function evaluateClearancePermissions() {
   }
 }
 
-// ===================== REBUILD ALL VIEWS =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 8: MASTER VIEW REBUILDER
+// ═══════════════════════════════════════════════════════════════════════
+
 function rebuildApplicationDOMViews() {
   generateDashboardStats();
   generateProjectDashboard();
@@ -356,7 +439,13 @@ function rebuildApplicationDOMViews() {
   generateNotificationBar();
 }
 
-// ===================== DASHBOARD =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 9: DASHBOARD & PROJECTS
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── Dashboard Statistics ──────────────────────────────────────────────
+
 function generateDashboardStats() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const active = projects.filter(p => !p.archived);
@@ -373,13 +462,13 @@ function generateDashboardStats() {
   const staffCount = registeredUsersDB.filter(u => u.role === 'STAFF').length;
   const todayStr = today.toLocaleDateString('en-CA');
   const todayCheckins = attendanceLogs.filter(l => l.date === todayStr).length;
-  
+
   const elActive = document.getElementById('statActiveProjects');
   const elOverdue = document.getElementById('statOverdue');
   const elSoon = document.getElementById('statDueSoon');
   const elStaff = document.getElementById('statStaffCount');
   const elCheckins = document.getElementById('statTodayCheckins');
-  
+
   if (elActive) elActive.innerText = active.length;
   if (elOverdue) elOverdue.innerText = overdue.length;
   if (elSoon) elSoon.innerText = dueSoon.length;
@@ -398,31 +487,38 @@ function getUrgencyLabel(deadline) {
   return '<span class="urgency-ok">✓ ' + diff + 'd left</span>';
 }
 
+// ── Project Grid ──────────────────────────────────────────────────────
+
 function generateProjectDashboard() {
   const container = document.getElementById('projectGrid');
   if (!container) return;
   container.innerHTML = '';
+
   const subset = projects.filter(item => {
     if (item.archived) return false;
     const matchesFilter = (currentFilter === 'ALL' || item.category === currentFilter);
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
   });
-  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+
   if (subset.length === 0) {
     container.innerHTML = '<div class="card" style="grid-column:1/-1; text-align:center; color:var(--text-muted);">No projects found.</div>';
     return;
   }
+
   subset.forEach(p => {
     const card = document.createElement('div');
     card.className = 'card card-interactive';
+
     let statusClass = 'status-active';
     if (p.status === 'IN REVIEW') statusClass = 'status-review';
     if (p.status === 'FILED') statusClass = 'status-filed';
     if (p.status === 'ON HOLD') statusClass = 'status-on-hold';
     if (p.status === 'PUBLISHED') statusClass = 'status-published';
+
     const tagsHtml = p.tags ? p.tags.split(',').filter(t => t.trim()).map(t => '<span class="card-tag">' + t.trim() + '</span>').join('') : '';
     const reporterHtml = p.reporter ? '<div class="card-reporter-chip"><div class="mini-avatar">' + p.reporter.split(' ').map(w => w[0]).join('').substring(0,2).toUpperCase() + '</div><span>' + p.reporter + '</span></div>' : '';
+
     card.innerHTML =
       '<div style="display:flex;justify-content:space-between;"><div class="card-category">' + p.category + '</div><span style="font-size:0.7rem;font-weight:800;">' + (p.priority || 'MEDIUM') + '</span></div>' +
       '<div class="card-title">' + p.title + '</div>' +
@@ -432,6 +528,7 @@ function generateProjectDashboard() {
       '<div class="card-actions"><button class="card-action-btn profile-btn" data-id="' + p.id + '">📋 View</button></div>';
     container.appendChild(card);
   });
+
   container.querySelectorAll('.profile-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -440,46 +537,13 @@ function generateProjectDashboard() {
   });
 }
 
-function generateAnnouncementsStream() {
-  const container = document.getElementById('announcementsStreamContainer');
-  if (!container) return;
-  container.innerHTML = '';
-  const reversed = [...announcements].reverse();
-  reversed.forEach(ann => {
-    const isPingedToMe = currentUser && ann.target === currentUser.name;
-    const isBroadcastAll = ann.target === 'ALL';
-    if (!isBroadcastAll && !isPingedToMe && currentUser.role !== 'ADMIN') return;
-    const node = document.createElement('div');
-    node.className = 'announcement-node' + (isPingedToMe ? ' pinged' : '');
-    node.innerHTML =
-      '<div class="announcement-meta"><span class="announcement-badge-alert">' + (isBroadcastAll ? 'NEWS FLASH' : 'DIRECT PING') + '</span><span>By <b>' + ann.sender + '</b></span><span>•</span><span>' + ann.timestamp + '</span></div>' +
-      '<div class="announcement-body">' + ann.text + '</div>';
-    container.appendChild(node);
-  });
-  if (container.children.length === 0) {
-    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:1rem;">No announcements.</div>';
-  }
-}
+// ── Project Profile Modal ─────────────────────────────────────────────
 
-function generateStaffDirectory() {
-  const container = document.getElementById('staffDirectoryList');
-  if (!container) return;
-  container.innerHTML = '';
-  registeredUsersDB.forEach(user => {
-    const row = document.createElement('div');
-    row.className = 'staff-directory-row' + (user.role === 'ADMIN' ? ' role-admin' : '');
-    row.innerHTML =
-      '<div class="staff-info-block"><div class="staff-avatar-mini">' + user.code + '</div><div class="staff-details"><span class="staff-row-name">' + user.name + '</span><span class="staff-row-role">' + user.role + '</span></div></div>';
-    container.appendChild(row);
-  });
-}
-
-// ===================== PROJECT PROFILE =====================
 function openProjectProfile(projectId) {
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
   activeProfileId = projectId;
-  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+
   document.getElementById('profileModalCategory').innerText = p.category;
   document.getElementById('profileModalTitle').innerText = p.title;
   document.getElementById('profileModalStatus').innerText = p.status;
@@ -537,11 +601,59 @@ function requestArchiveProject(projectId) {
   triggerNotificationToast('Archive request submitted.');
 }
 
-// ===================== BEATS =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 10: ANNOUNCEMENTS & STAFF
+// ═══════════════════════════════════════════════════════════════════════
+
+function generateAnnouncementsStream() {
+  const container = document.getElementById('announcementsStreamContainer');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const reversed = [...announcements].reverse();
+  reversed.forEach(ann => {
+    const isPingedToMe = currentUser && ann.target === currentUser.name;
+    const isBroadcastAll = ann.target === 'ALL';
+    if (!isBroadcastAll && !isPingedToMe && currentUser.role !== 'ADMIN') return;
+
+    const node = document.createElement('div');
+    node.className = 'announcement-node' + (isPingedToMe ? ' pinged' : '');
+    node.innerHTML =
+      '<div class="announcement-meta"><span class="announcement-badge-alert">' + (isBroadcastAll ? 'NEWS FLASH' : 'DIRECT PING') + '</span><span>By <b>' + ann.sender + '</b></span><span>•</span><span>' + ann.timestamp + '</span></div>' +
+      '<div class="announcement-body">' + ann.text + '</div>';
+    container.appendChild(node);
+  });
+
+  if (container.children.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:1rem;">No announcements.</div>';
+  }
+}
+
+function generateStaffDirectory() {
+  const container = document.getElementById('staffDirectoryList');
+  if (!container) return;
+  container.innerHTML = '';
+
+  registeredUsersDB.forEach(user => {
+    const row = document.createElement('div');
+    row.className = 'staff-directory-row' + (user.role === 'ADMIN' ? ' role-admin' : '');
+    row.innerHTML =
+      '<div class="staff-info-block"><div class="staff-avatar-mini">' + user.code + '</div><div class="staff-details"><span class="staff-row-name">' + user.name + '</span><span class="staff-row-role">' + user.role + '</span></div></div>';
+    container.appendChild(row);
+  });
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 11: BEATS & ASSIGNMENTS
+// ═══════════════════════════════════════════════════════════════════════
+
 function generateBeatsGrid() {
   const container = document.getElementById('beatsGrid');
   if (!container) return;
   container.innerHTML = '';
+
   beats.forEach(b => {
     const card = document.createElement('div');
     card.className = 'card';
@@ -553,11 +665,11 @@ function generateBeatsGrid() {
   });
 }
 
-// ===================== ASSIGNMENTS =====================
 function generateAssignmentsGrid() {
   const container = document.getElementById('assignmentsGrid');
   if (!container) return;
   container.innerHTML = '';
+
   assignments.forEach(a => {
     const card = document.createElement('div');
     card.className = 'card';
@@ -568,11 +680,16 @@ function generateAssignmentsGrid() {
   });
 }
 
-// ===================== EVENTS =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 12: EVENTS & CALENDAR
+// ═══════════════════════════════════════════════════════════════════════
+
 function generateEventsTrackerChecklist() {
   const container = document.getElementById('eventsChecklistContainer');
   if (!container) return;
   container.innerHTML = '';
+
   events.forEach(evt => {
     const div = document.createElement('div');
     div.className = 'event-row' + (evt.completed ? ' done' : '');
@@ -581,22 +698,25 @@ function generateEventsTrackerChecklist() {
   });
 }
 
-// ===================== CALENDAR =====================
 function generateDeadlineCalendarGrid() {
   const container = document.getElementById('calendarMatrixLayout');
   const monthYearLabel = document.getElementById('calMonthYear');
   if (!container) return;
   container.innerHTML = '';
+
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   if (monthYearLabel) monthYearLabel.innerText = monthNames[calendarMonth] + ' ' + calendarYear;
+
   const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
   const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+
   for (let i = 0; i < firstDay; i++) {
     const empty = document.createElement('div');
     empty.className = 'cal-cell';
     empty.style.opacity = '0.3';
     container.appendChild(empty);
   }
+
   for (let day = 1; day <= daysInMonth; day++) {
     const cell = document.createElement('div');
     cell.className = 'cal-cell';
@@ -612,7 +732,11 @@ function generateDeadlineCalendarGrid() {
   }
 }
 
-// ===================== ATTENDANCE =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 13: ATTENDANCE & GEO-TRACKING
+// ═══════════════════════════════════════════════════════════════════════
+
 function saveAttendanceLogs() {
   localStorage.setItem('jcompass_attendance', JSON.stringify(attendanceLogs));
 }
@@ -621,17 +745,21 @@ function renderAttendanceTable() {
   const tbody = document.getElementById('attendanceTableBody');
   const emptyRow = document.getElementById('attendanceEmptyRow');
   if (!tbody) return;
+
   Array.from(tbody.querySelectorAll('tr:not(#attendanceEmptyRow)')).forEach(r => r.remove());
+
   const subset = attendanceLogs.filter(log =>
     log.reporter.toLowerCase().includes(attendanceSearchQuery.toLowerCase()) ||
     log.date.includes(attendanceSearchQuery) ||
     (log.location && log.location.toLowerCase().includes(attendanceSearchQuery.toLowerCase()))
   );
+
   if (subset.length === 0) {
     if (emptyRow) emptyRow.style.display = '';
     return;
   }
   if (emptyRow) emptyRow.style.display = 'none';
+
   subset.slice(0, 100).forEach((log, idx) => {
     const tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
@@ -664,6 +792,7 @@ function startLiveClock() {
   const clockEl = document.getElementById('liveClock');
   const dateEl = document.getElementById('liveDate');
   if (!clockEl) return;
+
   function tick() {
     const now = new Date();
     clockEl.innerText = now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -694,18 +823,22 @@ function processFieldTelemetryMarking() {
   const btn = document.getElementById('markAttendanceBtn');
   const loggerNode = document.getElementById('telemetryStatus');
   if (!btn || !currentUser) return;
+
   if (hasCheckedInToday()) {
     triggerNotificationToast('Already checked in today.');
     return;
   }
+
   btn.disabled = true;
   btn.innerText = '⏳ Locating...';
+
   if (!navigator.geolocation) {
     triggerNotificationToast('Geolocation not supported.');
     btn.disabled = false;
     btn.innerText = '📍 Timestamp Geo-Presence Profile';
     return;
   }
+
   navigator.geolocation.getCurrentPosition(async (pos) => {
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
@@ -714,12 +847,14 @@ function processFieldTelemetryMarking() {
     const locationLabel = await reverseGeocodeLabel(lat, lon);
     const noteInput = document.getElementById('attendanceLocationNote');
     const note = noteInput ? noteInput.value.trim() : '';
+
     const entry = {
       id: Date.now(), reporter: currentUser.name, role: currentUser.role,
       date: now.toLocaleDateString('en-CA'), time: now.toLocaleTimeString('en-US', { hour12: true }),
       lat: lat.toFixed(6), lon: lon.toFixed(6), accuracy: Math.round(accuracy),
       location: locationLabel, note: note, timestamp: now.toISOString()
     };
+
     attendanceLogs.unshift(entry);
     saveAttendanceLogs();
     publishAttendanceRemote(entry);
@@ -745,18 +880,25 @@ function initAttendancePage() {
   }
 }
 
-// ===================== ARCHIVE =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 14: ARCHIVES & REPORTS
+// ═══════════════════════════════════════════════════════════════════════
+
 function generateArchiveGrid() {
   const container = document.getElementById('archiveGrid');
   const countBadge = document.getElementById('archiveCountBadge');
   if (!container) return;
   container.innerHTML = '';
+
   const archived = projects.filter(p => p.archived);
   if (countBadge) countBadge.innerText = archived.length + ' archived';
+
   if (archived.length === 0) {
     container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No archived projects.</div>';
     return;
   }
+
   archived.forEach(p => {
     const card = document.createElement('div');
     card.className = 'card archived-card';
@@ -773,11 +915,13 @@ function generateArchiveReportsGrid() {
   const countBadge = document.getElementById('archiveReportsCountBadge');
   if (!container) return;
   container.innerHTML = '';
+
   if (countBadge) countBadge.innerText = archivedReports.length + ' filed';
   if (archivedReports.length === 0) {
     container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No reports filed yet.</div>';
     return;
   }
+
   archivedReports.forEach(r => {
     const card = document.createElement('div');
     card.className = 'card';
@@ -791,11 +935,13 @@ function generateActivitySummaryGrid() {
   const countBadge = document.getElementById('activitySummaryCountBadge');
   if (!container) return;
   container.innerHTML = '';
+
   if (countBadge) countBadge.innerText = activitySummaries.length + ' generated';
   if (activitySummaries.length === 0) {
     container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No summaries generated.</div>';
     return;
   }
+
   activitySummaries.forEach(r => {
     const card = document.createElement('div');
     card.className = 'card';
@@ -811,6 +957,7 @@ function generateActivitySummaryReport() {
   const todayStr = new Date().toLocaleDateString('en-CA');
   const todayCheckins = attendanceLogs.filter(l => l.date === todayStr).length;
   const summaryText = 'Active: ' + activeProjects + ', Archived: ' + archivedCount + ', Check-ins today: ' + todayCheckins;
+
   activitySummaries.push({
     id: Date.now(), title: 'Summary ' + new Date().toLocaleDateString(),
     summary: summaryText, closedBy: currentUser.name,
@@ -821,19 +968,26 @@ function generateActivitySummaryReport() {
   triggerNotificationToast('Summary generated.');
 }
 
-// ===================== SOURCES =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 15: SOURCE VAULT
+// ═══════════════════════════════════════════════════════════════════════
+
 function generateSourcesGrid() {
   const container = document.getElementById('sourcesGrid');
   if (!container) return;
   container.innerHTML = '';
+
   const subset = sources.filter(s =>
     s.name.toLowerCase().includes(sourceSearchQuery.toLowerCase()) ||
     (s.beat || '').toLowerCase().includes(sourceSearchQuery.toLowerCase())
   );
+
   if (subset.length === 0) {
     container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No sources in vault.</div>';
     return;
   }
+
   subset.forEach(s => {
     const card = document.createElement('div');
     card.className = 'card source-card';
@@ -845,11 +999,16 @@ function generateSourcesGrid() {
   });
 }
 
-// ===================== USERS =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 16: USER MANAGEMENT (ADMIN)
+// ═══════════════════════════════════════════════════════════════════════
+
 function generateUsersTable() {
   const tbody = document.getElementById('usersTableBody');
   if (!tbody) return;
   tbody.innerHTML = '';
+
   registeredUsersDB.forEach(user => {
     const tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
@@ -867,13 +1026,19 @@ function createNewUser() {
   const name = document.getElementById('newUserName').value.trim();
   const pass = document.getElementById('newUserPass').value.trim();
   const role = document.getElementById('newUserRole').value;
+
   if (name.length < 2 || pass.length < 4) {
     triggerNotificationToast('Name too short or password < 4 characters.');
     return;
   }
+
   const parts = name.split(' ');
   const code = parts.length > 1 ? (parts[0][0] + parts[1][0]).toUpperCase() : name.substring(0, 2).toUpperCase();
-  registeredUsersDB.push({ name: name, pass: pass, role: role, code: code, created: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) });
+
+  registeredUsersDB.push({
+    name: name, pass: pass, role: role, code: code,
+    created: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  });
   flushStateToDisk();
   generateUsersTable();
   generateStaffDirectory();
@@ -881,7 +1046,11 @@ function createNewUser() {
   triggerNotificationToast('Account "' + name + '" created.');
 }
 
-// ===================== NOTIFICATION BAR =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 17: NOTIFICATION BAR
+// ═══════════════════════════════════════════════════════════════════════
+
 function dismissNotice(noticeId) {
   if (!dismissedNoticeIds.includes(noticeId)) {
     dismissedNoticeIds.push(noticeId);
@@ -893,16 +1062,19 @@ function dismissNotice(noticeId) {
 function generateNotificationBar() {
   const container = document.getElementById('notificationBarStack');
   if (!container || !currentUser) return;
+
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const active = projects.filter(p => !p.archived);
   const overdue = active.filter(p => {
     if (!p.deadline || p.status === 'FILED' || p.status === 'PUBLISHED') return false;
     return new Date(p.deadline) < today;
   });
+
   const notices = [];
   if (overdue.length > 0) {
     notices.push({ id: 'overdue-' + overdue.length, type: 'danger', icon: '⚠', text: overdue.length + ' project(s) overdue.', actionLabel: 'View', actionPage: 'dashboard' });
   }
+
   const visible = notices.filter(n => !dismissedNoticeIds.includes(n.id));
   container.innerHTML = visible.map(n =>
     '<div class="notice-bar notice-' + n.type + '">' +
@@ -911,19 +1083,22 @@ function generateNotificationBar() {
     '<button class="notice-dismiss-btn">✕</button>' +
     '</div>'
   ).join('');
+
   container.querySelectorAll('.notice-dismiss-btn').forEach((btn, i) => {
     btn.addEventListener('click', () => dismissNotice(visible[i].id));
   });
 }
 
-// ===================== INITIALIZATION =====================
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 18: APPLICATION INITIALIZATION
+// ═══════════════════════════════════════════════════════════════════════
+
 function initializeApp() {
-  // Login button
+  // ── Login ──────────────────────────────────────────────────────────
   const loginBtn = document.getElementById('loginSubmitBtn');
-  if (loginBtn) {
-    loginBtn.onclick = processCredentialsAuthentication;
-  }
-  // Enter key
+  if (loginBtn) loginBtn.onclick = processCredentialsAuthentication;
+
   ['username', 'password'].forEach(id => {
     const field = document.getElementById(id);
     if (field) {
@@ -932,14 +1107,18 @@ function initializeApp() {
       };
     }
   });
-  // Init Supabase
+
+  // ── Supabase ───────────────────────────────────────────────────────
   initSupabaseClient();
-  // Theme
+
+  // ── Theme ──────────────────────────────────────────────────────────
   const savedTheme = localStorage.getItem('jcompass_theme') || 'forest';
   document.body.setAttribute('data-theme-profile', savedTheme);
-  // Session check
+
+  // ── Session ────────────────────────────────────────────────────────
   enforceSessionGuard();
-  // Navigation
+
+  // ── Navigation ─────────────────────────────────────────────────────
   document.querySelectorAll('.nav-item').forEach(nav => {
     nav.addEventListener('click', () => {
       document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -954,14 +1133,16 @@ function initializeApp() {
       if (targetPage === 'calendar') generateDeadlineCalendarGrid();
     });
   });
-  // Menu toggle
+
+  // ── Menu Toggle ────────────────────────────────────────────────────
   const menuToggle = document.getElementById('menuToggle');
   if (menuToggle) {
     menuToggle.addEventListener('click', () => {
       document.getElementById('sidebar').classList.toggle('active');
     });
   }
-  // Sign out
+
+  // ── Sign Out ───────────────────────────────────────────────────────
   const signOutBtn = document.getElementById('signOutBtn');
   if (signOutBtn) {
     signOutBtn.addEventListener('click', () => {
@@ -969,7 +1150,8 @@ function initializeApp() {
       location.reload();
     });
   }
-  // Announcement submit
+
+  // ── Announcements ──────────────────────────────────────────────────
   const announceBtn = document.getElementById('submitAnnouncementBtn');
   if (announceBtn) {
     announceBtn.addEventListener('click', () => {
@@ -981,12 +1163,12 @@ function initializeApp() {
       generateAnnouncementsStream();
     });
   }
-  // Attendance button
+
+  // ── Attendance ─────────────────────────────────────────────────────
   const attendanceBtn = document.getElementById('markAttendanceBtn');
-  if (attendanceBtn) {
-    attendanceBtn.addEventListener('click', processFieldTelemetryMarking);
-  }
-  // Create project
+  if (attendanceBtn) attendanceBtn.addEventListener('click', processFieldTelemetryMarking);
+
+  // ── Create Project ─────────────────────────────────────────────────
   const createProjectBtn = document.getElementById('createProjectBtn');
   if (createProjectBtn) {
     createProjectBtn.addEventListener('click', () => {
@@ -994,17 +1176,23 @@ function initializeApp() {
       const category = document.getElementById('newCategory').value;
       const deadline = document.getElementById('newDeadline').value || new Date().toISOString().split('T')[0];
       if (!title) return;
-      projects.push({ id: Date.now(), title: title, category: category, deadline: deadline, status: 'ACTIVE', priority: 'MEDIUM', progress: 0, reporter: currentUser ? currentUser.name : '', notes: '', tags: '', archived: false });
+      projects.push({
+        id: Date.now(), title: title, category: category, deadline: deadline,
+        status: 'ACTIVE', priority: 'MEDIUM', progress: 0, reporter: currentUser ? currentUser.name : '',
+        notes: '', tags: '', archived: false
+      });
       flushStateToDisk();
       rebuildApplicationDOMViews();
       document.getElementById('newProjectModal').classList.remove('active');
       document.getElementById('newTitle').value = '';
     });
   }
-  // Save user
+
+  // ── Save User ──────────────────────────────────────────────────────
   const saveUserBtn = document.getElementById('saveUserBtn');
   if (saveUserBtn) saveUserBtn.addEventListener('click', createNewUser);
-  // Save source
+
+  // ── Save Source ────────────────────────────────────────────────────
   const saveSourceBtn = document.getElementById('saveSourceBtn');
   if (saveSourceBtn) {
     saveSourceBtn.addEventListener('click', () => {
@@ -1014,44 +1202,54 @@ function initializeApp() {
       const reliability = document.getElementById('sourceReliability').value;
       const notes = document.getElementById('sourceNotes').value.trim();
       if (!name) return;
-      sources.push({ id: Date.now(), name: name, beat: beat, contact: contact, reliability: reliability, notes: notes, createdBy: currentUser ? currentUser.name : 'Unknown' });
+      sources.push({
+        id: Date.now(), name: name, beat: beat, contact: contact,
+        reliability: reliability, notes: notes, createdBy: currentUser ? currentUser.name : 'Unknown'
+      });
       flushStateToDisk();
       generateSourcesGrid();
       document.getElementById('addSourceModal').classList.remove('active');
     });
   }
-  // Notification permission
+
+  // ── Notifications ──────────────────────────────────────────────────
   refreshNotificationPermissionUI();
   const notifyBtn = document.getElementById('enableNotificationsBtn');
   if (notifyBtn) notifyBtn.addEventListener('click', requestNotificationPermission);
-  // Calendar navigation
+
+  // ── Calendar Navigation ────────────────────────────────────────────
   const prevBtn = document.getElementById('calPrevMonth');
   const nextBtn = document.getElementById('calNextMonth');
   if (prevBtn) prevBtn.addEventListener('click', () => { calendarMonth--; if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; } generateDeadlineCalendarGrid(); });
   if (nextBtn) nextBtn.addEventListener('click', () => { calendarMonth++; if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; } generateDeadlineCalendarGrid(); });
-  // Search
+
+  // ── Search Inputs ──────────────────────────────────────────────────
   const searchInput = document.getElementById('dashboardSearchInput');
   if (searchInput) searchInput.addEventListener('input', (e) => { searchQuery = e.target.value; generateProjectDashboard(); });
-  // Source search
+
   const sourceSearch = document.getElementById('sourceSearchInput');
   if (sourceSearch) sourceSearch.addEventListener('input', (e) => { sourceSearchQuery = e.target.value; generateSourcesGrid(); });
-  // Attendance search
+
   const attSearch = document.getElementById('attendanceSearchInput');
   if (attSearch) attSearch.addEventListener('input', (e) => { attendanceSearchQuery = e.target.value; renderAttendanceTable(); });
-  // Generate summary
+
+  // ── Activity Summary ───────────────────────────────────────────────
   const genSummaryBtn = document.getElementById('generateActivitySummaryBtn');
   if (genSummaryBtn) genSummaryBtn.addEventListener('click', generateActivitySummaryReport);
-  // Save profile
+
+  // ── Save Profile ───────────────────────────────────────────────────
   const saveProfileBtn = document.getElementById('profileSaveBtn');
   if (saveProfileBtn) saveProfileBtn.addEventListener('click', saveProjectProfile);
-  // Modal close buttons
+
+  // ── Modal Close Buttons ────────────────────────────────────────────
   document.querySelectorAll('[data-close]').forEach(btn => {
     btn.addEventListener('click', () => {
       const modalId = btn.getAttribute('data-close');
       document.getElementById(modalId).classList.remove('active');
     });
   });
-  // Modal open buttons
+
+  // ── Modal Open Buttons ─────────────────────────────────────────────
   const modalButtons = [
     { btnId: 'fabBtn', modalId: 'newProjectModal' },
     { btnId: 'addCalendarProjectBtn', modalId: 'newProjectModal' },
@@ -1062,11 +1260,13 @@ function initializeApp() {
     { btnId: 'addSourceBtn', modalId: 'addSourceModal' },
     { btnId: 'quickAddProjectBtn', modalId: 'newProjectModal' }
   ];
+
   modalButtons.forEach(({ btnId, modalId }) => {
     const btn = document.getElementById(btnId);
     if (btn) btn.addEventListener('click', () => document.getElementById(modalId).classList.add('active'));
   });
-  // Save beat
+
+  // ── Save Beat ──────────────────────────────────────────────────────
   const saveBeatBtn = document.getElementById('saveBeatBtn');
   if (saveBeatBtn) {
     saveBeatBtn.addEventListener('click', () => {
@@ -1080,7 +1280,8 @@ function initializeApp() {
       document.getElementById('addBeatModal').classList.remove('active');
     });
   }
-  // Save assignment
+
+  // ── Save Assignment ────────────────────────────────────────────────
   const saveAssignmentBtn = document.getElementById('saveAssignmentBtn');
   if (saveAssignmentBtn) {
     saveAssignmentBtn.addEventListener('click', () => {
@@ -1093,7 +1294,8 @@ function initializeApp() {
       document.getElementById('addAssignmentModal').classList.remove('active');
     });
   }
-  // Save event
+
+  // ── Save Event ─────────────────────────────────────────────────────
   const saveEventBtn = document.getElementById('saveEventBtn');
   if (saveEventBtn) {
     saveEventBtn.addEventListener('click', () => {
@@ -1106,7 +1308,8 @@ function initializeApp() {
       document.getElementById('addEventModal').classList.remove('active');
     });
   }
-  // Save name
+
+  // ── Save Name ──────────────────────────────────────────────────────
   const saveNameBtn = document.getElementById('saveNameBtn');
   if (saveNameBtn) {
     saveNameBtn.addEventListener('click', () => {
@@ -1120,7 +1323,8 @@ function initializeApp() {
       triggerNotificationToast('Name updated.');
     });
   }
-  // Theme buttons
+
+  // ── Theme Buttons ──────────────────────────────────────────────────
   document.querySelectorAll('.theme-chip-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.theme-chip-btn').forEach(c => c.classList.remove('active'));
@@ -1130,25 +1334,33 @@ function initializeApp() {
       localStorage.setItem('jcompass_theme', theme);
     });
   });
-  // Export CSV
+
+  // ── Export CSV ─────────────────────────────────────────────────────
   const exportBtn = document.getElementById('exportAttendanceBtn');
-  if (exportBtn) exportBtn.addEventListener('click', () => {
-    if (attendanceLogs.length === 0) { triggerNotificationToast('No attendance data.'); return; }
-    const csv = ['Reporter,Role,Date,Time,Lat,Lon,Accuracy,Location,Note'].concat(
-      attendanceLogs.map(l => [l.reporter, l.role, l.date, l.time, l.lat, l.lon, l.accuracy, l.location, l.note].join(','))
-    ).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'attendance.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  });
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+      if (attendanceLogs.length === 0) { triggerNotificationToast('No attendance data.'); return; }
+      const csv = ['Reporter,Role,Date,Time,Lat,Lon,Accuracy,Location,Note'].concat(
+        attendanceLogs.map(l => [l.reporter, l.role, l.date, l.time, l.lat, l.lon, l.accuracy, l.location, l.note].join(','))
+      ).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'attendance.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+
   console.log('✅ JCompass initialized successfully');
 }
 
-// Run initialization
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 19: BOOTSTRAP
+// ═══════════════════════════════════════════════════════════════════════
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initializeApp);
 } else {
