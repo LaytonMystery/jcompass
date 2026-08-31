@@ -717,5 +717,440 @@ function processFieldTelemetryMarking() {
     const entry = {
       id: Date.now(), reporter: currentUser.name, role: currentUser.role,
       date: now.toLocaleDateString('en-CA'), time: now.toLocaleTimeString('en-US', { hour12: true }),
-      lat: lat.toFixed(6), lon: lon.toFixed(6), accuracy: Math.round
+      lat: lat.toFixed(6), lon: lon.toFixed(6), accuracy: Math.round(accuracy),
+      location: locationLabel, note: note, timestamp: now.toISOString()
+    };
+    attendanceLogs.unshift(entry);
+    saveAttendanceLogs();
+    publishAttendanceRemote(entry);
+    renderAttendanceTable();
+    updateAttendanceStats();
+    btn.disabled = false;
+    btn.innerText = '✓ Checked In';
+    triggerNotificationToast('Attendance logged: ' + entry.time);
+  }, () => {
+    btn.disabled = false;
+    btn.innerText = '📍 Timestamp Geo-Presence Profile';
+    triggerNotificationToast('Location access denied.');
+  }, { enableHighAccuracy: true, timeout: 12000 });
+}
+
+function initAttendancePage() {
+  startLiveClock();
+  renderAttendanceTable();
+  updateAttendanceStats();
+  if (hasCheckedInToday()) {
+    const btn = document.getElementById('markAttendanceBtn');
+    if (btn) { btn.innerText = '✓ Checked In Today'; btn.style.background = 'var(--success)'; }
+  }
+}
+
+// ===================== ARCHIVE =====================
+function generateArchiveGrid() {
+  const container = document.getElementById('archiveGrid');
+  const countBadge = document.getElementById('archiveCountBadge');
+  if (!container) return;
+  container.innerHTML = '';
+  const archived = projects.filter(p => p.archived);
+  if (countBadge) countBadge.innerText = archived.length + ' archived';
+  if (archived.length === 0) {
+    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No archived projects.</div>';
+    return;
+  }
+  archived.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'card archived-card';
+    card.innerHTML =
+      '<div class="card-category">' + p.category + '</div>' +
+      '<div class="card-title">' + p.title + '</div>' +
+      '<div class="card-meta"><span>📅 ' + p.deadline + '</span><span>' + p.status + '</span></div>';
+    container.appendChild(card);
+  });
+}
+
+function generateArchiveReportsGrid() {
+  const container = document.getElementById('archiveReportsGrid');
+  const countBadge = document.getElementById('archiveReportsCountBadge');
+  if (!container) return;
+  container.innerHTML = '';
+  if (countBadge) countBadge.innerText = archivedReports.length + ' filed';
+  if (archivedReports.length === 0) {
+    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No reports filed yet.</div>';
+    return;
+  }
+  archivedReports.forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = '<div class="card-title">' + r.title + '</div><div style="font-size:0.85rem;color:var(--text-muted);">' + r.summary + '</div>';
+    container.appendChild(card);
+  });
+}
+
+function generateActivitySummaryGrid() {
+  const container = document.getElementById('activitySummaryGrid');
+  const countBadge = document.getElementById('activitySummaryCountBadge');
+  if (!container) return;
+  container.innerHTML = '';
+  if (countBadge) countBadge.innerText = activitySummaries.length + ' generated';
+  if (activitySummaries.length === 0) {
+    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No summaries generated.</div>';
+    return;
+  }
+  activitySummaries.forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = '<div class="card-title">' + r.title + '</div><div style="font-size:0.85rem;color:var(--text-muted);">' + r.summary + '</div>';
+    container.appendChild(card);
+  });
+}
+
+function generateActivitySummaryReport() {
+  if (!currentUser || currentUser.role !== 'ADMIN') return;
+  const activeProjects = projects.filter(p => !p.archived).length;
+  const archivedCount = projects.filter(p => p.archived).length;
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const todayCheckins = attendanceLogs.filter(l => l.date === todayStr).length;
+  const summaryText = 'Active: ' + activeProjects + ', Archived: ' + archivedCount + ', Check-ins today: ' + todayCheckins;
+  activitySummaries.push({
+    id: Date.now(), title: 'Summary ' + new Date().toLocaleDateString(),
+    summary: summaryText, closedBy: currentUser.name,
+    timestamp: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  });
+  flushStateToDisk();
+  generateActivitySummaryGrid();
+  triggerNotificationToast('Summary generated.');
+}
+
+// ===================== SOURCES =====================
+function generateSourcesGrid() {
+  const container = document.getElementById('sourcesGrid');
+  if (!container) return;
+  container.innerHTML = '';
+  const subset = sources.filter(s =>
+    s.name.toLowerCase().includes(sourceSearchQuery.toLowerCase()) ||
+    (s.beat || '').toLowerCase().includes(sourceSearchQuery.toLowerCase())
+  );
+  if (subset.length === 0) {
+    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No sources in vault.</div>';
+    return;
+  }
+  subset.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'card source-card';
+    card.innerHTML =
+      '<div class="card-title">' + s.name + '</div>' +
+      '<div style="font-size:0.85rem;color:var(--text-muted);">Beat: <b>' + (s.beat || 'Unassigned') + '</b></div>' +
+      '<div style="font-size:0.82rem;color:var(--accent-light);">' + (s.contact || 'No contact') + '</div>';
+    container.appendChild(card);
+  });
+}
+
+// ===================== USERS =====================
+function generateUsersTable() {
+  const tbody = document.getElementById('usersTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  registeredUsersDB.forEach(user => {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
+    tr.innerHTML =
+      '<td style="padding:0.9rem 1.25rem;font-weight:800;">' + user.code + '</td>' +
+      '<td style="padding:0.9rem 1.25rem;font-weight:600;">' + user.name + '</td>' +
+      '<td style="padding:0.9rem 1.25rem;">' + user.role + '</td>' +
+      '<td style="padding:0.9rem 1.25rem;color:var(--text-muted);">' + (user.created || '—') + '</td>' +
+      '<td style="padding:0.9rem 1.25rem;text-align:right;">—</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+function createNewUser() {
+  const name = document.getElementById('newUserName').value.trim();
+  const pass = document.getElementById('newUserPass').value.trim();
+  const role = document.getElementById('newUserRole').value;
+  if (name.length < 2 || pass.length < 4) {
+    triggerNotificationToast('Name too short or password < 4 characters.');
+    return;
+  }
+  const parts = name.split(' ');
+  const code = parts.length > 1 ? (parts[0][0] + parts[1][0]).toUpperCase() : name.substring(0, 2).toUpperCase();
+  registeredUsersDB.push({ name: name, pass: pass, role: role, code: code, created: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) });
+  flushStateToDisk();
+  generateUsersTable();
+  generateStaffDirectory();
+  document.getElementById('addUserModal').classList.remove('active');
+  triggerNotificationToast('Account "' + name + '" created.');
+}
+
+// ===================== NOTIFICATION BAR =====================
+function dismissNotice(noticeId) {
+  if (!dismissedNoticeIds.includes(noticeId)) {
+    dismissedNoticeIds.push(noticeId);
+    safeSaveJSON('jcompass_dismissed_notices', dismissedNoticeIds);
+  }
+  generateNotificationBar();
+}
+
+function generateNotificationBar() {
+  const container = document.getElementById('notificationBarStack');
+  if (!container || !currentUser) return;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const active = projects.filter(p => !p.archived);
+  const overdue = active.filter(p => {
+    if (!p.deadline || p.status === 'FILED' || p.status === 'PUBLISHED') return false;
+    return new Date(p.deadline) < today;
+  });
+  const notices = [];
+  if (overdue.length > 0) {
+    notices.push({ id: 'overdue-' + overdue.length, type: 'danger', icon: '⚠', text: overdue.length + ' project(s) overdue.', actionLabel: 'View', actionPage: 'dashboard' });
+  }
+  const visible = notices.filter(n => !dismissedNoticeIds.includes(n.id));
+  container.innerHTML = visible.map(n =>
+    '<div class="notice-bar notice-' + n.type + '">' +
+    '<span class="notice-icon">' + n.icon + '</span>' +
+    '<span class="notice-text">' + n.text + '</span>' +
+    '<button class="notice-dismiss-btn">✕</button>' +
+    '</div>'
+  ).join('');
+  container.querySelectorAll('.notice-dismiss-btn').forEach((btn, i) => {
+    btn.addEventListener('click', () => dismissNotice(visible[i].id));
+  });
+}
+
+// ===================== INITIALIZATION =====================
+function initializeApp() {
+  // Login button
+  const loginBtn = document.getElementById('loginSubmitBtn');
+  if (loginBtn) {
+    loginBtn.onclick = processCredentialsAuthentication;
+  }
+  // Enter key
+  ['username', 'password'].forEach(id => {
+    const field = document.getElementById(id);
+    if (field) {
+      field.onkeydown = function(e) {
+        if (e.key === 'Enter') processCredentialsAuthentication();
+      };
     }
+  });
+  // Init Supabase
+  initSupabaseClient();
+  // Theme
+  const savedTheme = localStorage.getItem('jcompass_theme') || 'forest';
+  document.body.setAttribute('data-theme-profile', savedTheme);
+  // Session check
+  enforceSessionGuard();
+  // Navigation
+  document.querySelectorAll('.nav-item').forEach(nav => {
+    nav.addEventListener('click', () => {
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      nav.classList.add('active');
+      const targetPage = nav.getAttribute('data-page');
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      const pageEl = document.getElementById('page-' + targetPage);
+      if (pageEl) pageEl.classList.add('active');
+      const breadcrumb = document.getElementById('breadcrumbCurrent');
+      if (breadcrumb) breadcrumb.innerText = nav.querySelector('.nav-label').innerText;
+      if (targetPage === 'attend') initAttendancePage();
+      if (targetPage === 'calendar') generateDeadlineCalendarGrid();
+    });
+  });
+  // Menu toggle
+  const menuToggle = document.getElementById('menuToggle');
+  if (menuToggle) {
+    menuToggle.addEventListener('click', () => {
+      document.getElementById('sidebar').classList.toggle('active');
+    });
+  }
+  // Sign out
+  const signOutBtn = document.getElementById('signOutBtn');
+  if (signOutBtn) {
+    signOutBtn.addEventListener('click', () => {
+      localStorage.removeItem('jcompass_user');
+      location.reload();
+    });
+  }
+  // Announcement submit
+  const announceBtn = document.getElementById('submitAnnouncementBtn');
+  if (announceBtn) {
+    announceBtn.addEventListener('click', () => {
+      const input = document.getElementById('announceTextInput');
+      const target = document.getElementById('announcePingTarget');
+      if (!input || !input.value.trim() || !currentUser) return;
+      dispatchPing(currentUser.name, target.value, input.value.trim());
+      input.value = '';
+      generateAnnouncementsStream();
+    });
+  }
+  // Attendance button
+  const attendanceBtn = document.getElementById('markAttendanceBtn');
+  if (attendanceBtn) {
+    attendanceBtn.addEventListener('click', processFieldTelemetryMarking);
+  }
+  // Create project
+  const createProjectBtn = document.getElementById('createProjectBtn');
+  if (createProjectBtn) {
+    createProjectBtn.addEventListener('click', () => {
+      const title = document.getElementById('newTitle').value.trim();
+      const category = document.getElementById('newCategory').value;
+      const deadline = document.getElementById('newDeadline').value || new Date().toISOString().split('T')[0];
+      if (!title) return;
+      projects.push({ id: Date.now(), title: title, category: category, deadline: deadline, status: 'ACTIVE', priority: 'MEDIUM', progress: 0, reporter: currentUser ? currentUser.name : '', notes: '', tags: '', archived: false });
+      flushStateToDisk();
+      rebuildApplicationDOMViews();
+      document.getElementById('newProjectModal').classList.remove('active');
+      document.getElementById('newTitle').value = '';
+    });
+  }
+  // Save user
+  const saveUserBtn = document.getElementById('saveUserBtn');
+  if (saveUserBtn) saveUserBtn.addEventListener('click', createNewUser);
+  // Save source
+  const saveSourceBtn = document.getElementById('saveSourceBtn');
+  if (saveSourceBtn) {
+    saveSourceBtn.addEventListener('click', () => {
+      const name = document.getElementById('sourceName').value.trim();
+      const beat = document.getElementById('sourceBeat').value.trim();
+      const contact = document.getElementById('sourceContact').value.trim();
+      const reliability = document.getElementById('sourceReliability').value;
+      const notes = document.getElementById('sourceNotes').value.trim();
+      if (!name) return;
+      sources.push({ id: Date.now(), name: name, beat: beat, contact: contact, reliability: reliability, notes: notes, createdBy: currentUser ? currentUser.name : 'Unknown' });
+      flushStateToDisk();
+      generateSourcesGrid();
+      document.getElementById('addSourceModal').classList.remove('active');
+    });
+  }
+  // Notification permission
+  refreshNotificationPermissionUI();
+  const notifyBtn = document.getElementById('enableNotificationsBtn');
+  if (notifyBtn) notifyBtn.addEventListener('click', requestNotificationPermission);
+  // Calendar navigation
+  const prevBtn = document.getElementById('calPrevMonth');
+  const nextBtn = document.getElementById('calNextMonth');
+  if (prevBtn) prevBtn.addEventListener('click', () => { calendarMonth--; if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; } generateDeadlineCalendarGrid(); });
+  if (nextBtn) nextBtn.addEventListener('click', () => { calendarMonth++; if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; } generateDeadlineCalendarGrid(); });
+  // Search
+  const searchInput = document.getElementById('dashboardSearchInput');
+  if (searchInput) searchInput.addEventListener('input', (e) => { searchQuery = e.target.value; generateProjectDashboard(); });
+  // Source search
+  const sourceSearch = document.getElementById('sourceSearchInput');
+  if (sourceSearch) sourceSearch.addEventListener('input', (e) => { sourceSearchQuery = e.target.value; generateSourcesGrid(); });
+  // Attendance search
+  const attSearch = document.getElementById('attendanceSearchInput');
+  if (attSearch) attSearch.addEventListener('input', (e) => { attendanceSearchQuery = e.target.value; renderAttendanceTable(); });
+  // Generate summary
+  const genSummaryBtn = document.getElementById('generateActivitySummaryBtn');
+  if (genSummaryBtn) genSummaryBtn.addEventListener('click', generateActivitySummaryReport);
+  // Save profile
+  const saveProfileBtn = document.getElementById('profileSaveBtn');
+  if (saveProfileBtn) saveProfileBtn.addEventListener('click', saveProjectProfile);
+  // Modal close buttons
+  document.querySelectorAll('[data-close]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const modalId = btn.getAttribute('data-close');
+      document.getElementById(modalId).classList.remove('active');
+    });
+  });
+  // Modal open buttons
+  const modalButtons = [
+    { btnId: 'fabBtn', modalId: 'newProjectModal' },
+    { btnId: 'addCalendarProjectBtn', modalId: 'newProjectModal' },
+    { btnId: 'addBeatBtn', modalId: 'addBeatModal' },
+    { btnId: 'addAssignmentBtn', modalId: 'addAssignmentModal' },
+    { btnId: 'addEventBtn', modalId: 'addEventModal' },
+    { btnId: 'addUserBtn', modalId: 'addUserModal' },
+    { btnId: 'addSourceBtn', modalId: 'addSourceModal' },
+    { btnId: 'quickAddProjectBtn', modalId: 'newProjectModal' }
+  ];
+  modalButtons.forEach(({ btnId, modalId }) => {
+    const btn = document.getElementById(btnId);
+    if (btn) btn.addEventListener('click', () => document.getElementById(modalId).classList.add('active'));
+  });
+  // Save beat
+  const saveBeatBtn = document.getElementById('saveBeatBtn');
+  if (saveBeatBtn) {
+    saveBeatBtn.addEventListener('click', () => {
+      const name = document.getElementById('beatName').value.trim();
+      const reporter = document.getElementById('beatReporter').value.trim() || (currentUser ? currentUser.name : 'Reporter');
+      const priority = document.getElementById('beatPriority').value;
+      if (!name) return;
+      beats.push({ id: Date.now(), name: name, reporter: reporter, priority: priority, imgData: '' });
+      flushStateToDisk();
+      generateBeatsGrid();
+      document.getElementById('addBeatModal').classList.remove('active');
+    });
+  }
+  // Save assignment
+  const saveAssignmentBtn = document.getElementById('saveAssignmentBtn');
+  if (saveAssignmentBtn) {
+    saveAssignmentBtn.addEventListener('click', () => {
+      const title = document.getElementById('asgTitle').value.trim();
+      const assignee = document.getElementById('asgAssignee').value.trim() || 'General Desk';
+      if (!title) return;
+      assignments.push({ id: Date.now(), title: title, assignee: assignee });
+      flushStateToDisk();
+      generateAssignmentsGrid();
+      document.getElementById('addAssignmentModal').classList.remove('active');
+    });
+  }
+  // Save event
+  const saveEventBtn = document.getElementById('saveEventBtn');
+  if (saveEventBtn) {
+    saveEventBtn.addEventListener('click', () => {
+      const name = document.getElementById('evtName').value.trim();
+      const date = document.getElementById('evtDate').value || new Date().toISOString().split('T')[0];
+      if (!name) return;
+      events.push({ id: Date.now(), name: name, date: date, completed: false });
+      flushStateToDisk();
+      generateEventsTrackerChecklist();
+      document.getElementById('addEventModal').classList.remove('active');
+    });
+  }
+  // Save name
+  const saveNameBtn = document.getElementById('saveNameBtn');
+  if (saveNameBtn) {
+    saveNameBtn.addEventListener('click', () => {
+      const input = document.getElementById('sidebarNameInput');
+      if (!input || !currentUser) return;
+      const newName = input.value.trim();
+      if (!newName) return;
+      currentUser.name = newName;
+      localStorage.setItem('jcompass_user', JSON.stringify(currentUser));
+      evaluateClearancePermissions();
+      triggerNotificationToast('Name updated.');
+    });
+  }
+  // Theme buttons
+  document.querySelectorAll('.theme-chip-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.theme-chip-btn').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      const theme = btn.getAttribute('data-theme');
+      document.body.setAttribute('data-theme-profile', theme);
+      localStorage.setItem('jcompass_theme', theme);
+    });
+  });
+  // Export CSV
+  const exportBtn = document.getElementById('exportAttendanceBtn');
+  if (exportBtn) exportBtn.addEventListener('click', () => {
+    if (attendanceLogs.length === 0) { triggerNotificationToast('No attendance data.'); return; }
+    const csv = ['Reporter,Role,Date,Time,Lat,Lon,Accuracy,Location,Note'].concat(
+      attendanceLogs.map(l => [l.reporter, l.role, l.date, l.time, l.lat, l.lon, l.accuracy, l.location, l.note].join(','))
+    ).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'attendance.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+  console.log('✅ JCompass initialized successfully');
+}
+
+// Run initialization
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+  initializeApp();
+}
