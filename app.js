@@ -718,3 +718,4 @@ function processFieldTelemetryMarking() {
       id: Date.now(), reporter: currentUser.name, role: currentUser.role,
       date: now.toLocaleDateString('en-CA'), time: now.toLocaleTimeString('en-US', { hour12: true }),
       lat: lat.toFixed(6), lon: lon.toFixed(6), accuracy: Math.round
+    }
