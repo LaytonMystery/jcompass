@@ -18,6 +18,34 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
+  <!-- OneSignal Push Notifications -->
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function(OneSignal) {
+    await OneSignal.init({
+      appId: "e76cbe01-1a76-4f3d-a45d-9d155a126093",
+      notifyButton: {
+        enable: true,
+        size: 'medium',
+        position: 'bottom-right',
+        offset: {
+          bottom: '20px',
+          right: '20px'
+        },
+        prenotify: true,
+        showCredit: false
+      },
+      allowLocalhostAsSecureOrigin: true,
+      serviceWorkerPath: 'OneSignalSDKWorker.js',
+      serviceWorkerParam: { scope: '/' },
+    });
+    
+    // Check if notifications are enabled
+    const isPushSupported = OneSignal.User.PushSubscription.optedIn;
+    console.log('OneSignal Push enabled:', isPushSupported);
+  });
+</script>
 </head>
 <body>
 
