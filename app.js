@@ -378,6 +378,10 @@ function processCredentialsAuthentication() {
     currentUser = { name: matchUser.name, code: matchUser.code, role: matchUser.role };
     localStorage.setItem('jcompass_user', JSON.stringify(currentUser));
     if (errorNode) errorNode.style.display = 'none';
+    
+    // Set OneSignal user ID
+    setOneSignalUser(matchUser.name);
+    
     enforceSessionGuard();
     triggerNotificationToast('Welcome ' + currentUser.name);
   } else {
@@ -1420,4 +1424,85 @@ if (trayOverlay) {
     if (tray) tray.classList.remove('active');
     trayOverlay.classList.remove('active');
   });
+}
+// ===================== ONESIGNAL PUSH NOTIFICATIONS =====================
+const ONESIGNAL_APP_ID = 'e76cbe01-1a76-4f3d-a45d-9d155a126093';
+const ONESIGNAL_API_KEY = 'YOUR_REST_API_KEY'; // Get from OneSignal dashboard
+
+async function sendPushNotification(title, message, targetUserName = null) {
+  try {
+    const notificationData = {
+      app_id: ONESIGNAL_APP_ID,
+      contents: { en: message },
+      headings: { en: title },
+      priority: 10,
+      data: { type: 'ping' },
+      chrome_web_icon: 'https://cdn-icons-png.flaticon.com/512/148/148813.png',
+      chrome_web_badge: 'https://cdn-icons-png.flaticon.com/512/148/148813.png',
+    };
+    
+    // If targeting specific user, use their name as external ID
+    if (targetUserName) {
+      notificationData.include_external_user_ids = [targetUserName];
+    } else {
+      notificationData.included_segments = ['Subscribed Users'];
+    }
+    
+    const response = await fetch('https://onesignal.com/api/v1/notifications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + ONESIGNAL_API_KEY
+      },
+      body: JSON.stringify(notificationData)
+    });
+    
+    return await response.json();
+  } catch (err) {
+    console.error('Push notification failed:', err);
+  }
+}
+
+// Update dispatchPing to send push notifications
+function dispatchPing(sender, target, text) {
+  const payload = {
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    sender: sender, target: target, text: text,
+    timestamp: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  };
+  
+  if (supabaseClient) {
+    publishPingRemote(payload).catch(err => console.error('Failed to publish ping:', err));
+  } else {
+    announcements.push(payload);
+    flushStateToDisk();
+    generateAnnouncementsStream();
+    notifyIncomingPing(payload);
+  }
+  
+  // Send push notification via OneSignal
+  if (target === 'ALL') {
+    sendPushNotification(
+      '📰 Newsroom Broadcast',
+      sender + ': ' + text
+    );
+  } else {
+    sendPushNotification(
+      '📌 Direct Ping from ' + sender,
+      text,
+      target // Send to specific user
+    );
+  }
+}
+
+// Set external user ID when logged in
+async function setOneSignalUser(userName) {
+  if (window.OneSignal) {
+    try {
+      await window.OneSignal.login(userName);
+      console.log('OneSignal user set:', userName);
+    } catch (err) {
+      console.error('OneSignal login failed:', err);
+    }
+  }
 }
