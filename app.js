@@ -1,6 +1,6 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v2.4                                          ║
+ * ║  JOURNALIST'S COMPASS v2.5                                          ║
  * ║  Supabase is the SINGLE source of truth.                            ║
  * ║  Local storage = disposable read cache only.                        ║
  * ╚══════════════════════════════════════════════════════════════════════╝
@@ -141,7 +141,7 @@ function flushCachedCollections() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 5: SUPABASE SYNC
+//  SECTION 5: SUPABASE SYNC  (v2.5 — direct local assignment, no window)
 // ═══════════════════════════════════════════════════════════════════════
 
 async function syncAllDataFromSupabase() {
@@ -151,68 +151,100 @@ async function syncAllDataFromSupabase() {
   }
   console.log('🔄 Syncing all data from Supabase...');
 
-  const tables = [
-    {
-      table: 'projects', key: 'projects',
-      map: p => ({
-        id: p.id, title: p.title, category: p.category, deadline: p.deadline,
-        status: p.status, priority: p.priority, progress: p.progress,
-        reporter: p.reporter || '', notes: p.notes || '', tags: p.tags || '',
-        archived: p.archived || false
-      })
-    },
-    {
-      table: 'assignments', key: 'assignments',
-      map: a => ({ id: a.id, title: a.title, assignee: a.assignee || '', archived: a.archived || false })
-    },
-    {
-      table: 'beats', key: 'beats',
-      map: b => ({
-        id: b.id, name: b.name, reporter: b.reporter || '',
-        priority: b.priority || 'MEDIUM', imgData: b.img_data || '',
-        archived: b.archived || false
-      })
-    },
-    {
-      table: 'events', key: 'events',
-      map: e => ({
-        id: e.id, name: e.name, date: e.date,
-        completed: e.completed || false, archived: e.archived || false,
-        locationNote: e.location_note || ''
-      })
-    },
-    {
-      table: 'sources', key: 'sources',
-      map: s => ({
-        id: s.id, name: s.name, beat: s.beat || '', contact: s.contact || '',
-        reliability: s.reliability || 'MEDIUM', notes: s.notes || '',
-        createdBy: s.created_by || 'Unknown'
-      })
-    },
-    {
-      table: 'archive_requests', key: 'archiveRequests',
-      map: r => ({
-        id: r.id,
-        project_id: r.project_id,
-        project_title: r.project_title || '',
-        requester: r.requester,
-        request_timestamp: r.request_timestamp || '',
-        status: r.status || 'PENDING'
-      })
-    }
-  ];
-
-  for (const { table, key, map } of tables) {
-    try {
-      const { data, error } = await supabaseClient
-        .from(table).select('*').order('id', { ascending: true });
-      if (error) throw error;
-      window[key] = (data || []).map(map);
-    } catch (err) {
-      console.error(`Sync "${table}" failed:`, err);
-    }
+  // ── Projects ───────────────────────────────────────────────────────
+  try {
+    const { data, error } = await supabaseClient
+      .from('projects').select('*').order('id', { ascending: true });
+    if (error) throw error;
+    projects = (data || []).map(p => ({
+      id: p.id, title: p.title, category: p.category, deadline: p.deadline,
+      status: p.status, priority: p.priority, progress: p.progress,
+      reporter: p.reporter || '', notes: p.notes || '', tags: p.tags || '',
+      archived: p.archived || false
+    }));
+    console.log('   ✓ Projects:', projects.length);
+  } catch (err) {
+    console.error('Sync "projects" failed:', err);
   }
 
+  // ── Assignments ────────────────────────────────────────────────────
+  try {
+    const { data, error } = await supabaseClient
+      .from('assignments').select('*').order('id', { ascending: true });
+    if (error) throw error;
+    assignments = (data || []).map(a => ({
+      id: a.id, title: a.title, assignee: a.assignee || '',
+      archived: a.archived || false
+    }));
+    console.log('   ✓ Assignments:', assignments.length);
+  } catch (err) {
+    console.error('Sync "assignments" failed:', err);
+  }
+
+  // ── Beats ──────────────────────────────────────────────────────────
+  try {
+    const { data, error } = await supabaseClient
+      .from('beats').select('*').order('id', { ascending: true });
+    if (error) throw error;
+    beats = (data || []).map(b => ({
+      id: b.id, name: b.name, reporter: b.reporter || '',
+      priority: b.priority || 'MEDIUM', imgData: b.img_data || '',
+      archived: b.archived || false
+    }));
+    console.log('   ✓ Beats:', beats.length);
+  } catch (err) {
+    console.error('Sync "beats" failed:', err);
+  }
+
+  // ── Events ─────────────────────────────────────────────────────────
+  try {
+    const { data, error } = await supabaseClient
+      .from('events').select('*').order('id', { ascending: true });
+    if (error) throw error;
+    events = (data || []).map(e => ({
+      id: e.id, name: e.name, date: e.date,
+      completed: e.completed || false, archived: e.archived || false,
+      locationNote: e.location_note || ''
+    }));
+    console.log('   ✓ Events:', events.length);
+  } catch (err) {
+    console.error('Sync "events" failed:', err);
+  }
+
+  // ── Sources ────────────────────────────────────────────────────────
+  try {
+    const { data, error } = await supabaseClient
+      .from('sources').select('*').order('id', { ascending: true });
+    if (error) throw error;
+    sources = (data || []).map(s => ({
+      id: s.id, name: s.name, beat: s.beat || '', contact: s.contact || '',
+      reliability: s.reliability || 'MEDIUM', notes: s.notes || '',
+      createdBy: s.created_by || 'Unknown'
+    }));
+    console.log('   ✓ Sources:', sources.length);
+  } catch (err) {
+    console.error('Sync "sources" failed:', err);
+  }
+
+  // ── Archive Requests ───────────────────────────────────────────────
+  try {
+    const { data, error } = await supabaseClient
+      .from('archive_requests').select('*').order('id', { ascending: true });
+    if (error) throw error;
+    archiveRequests = (data || []).map(r => ({
+      id: r.id,
+      project_id: r.project_id,
+      project_title: r.project_title || '',
+      requester: r.requester,
+      request_timestamp: r.request_timestamp || '',
+      status: r.status || 'PENDING'
+    }));
+    console.log('   ✓ Archive Requests:', archiveRequests.length);
+  } catch (err) {
+    console.error('Sync "archive_requests" failed:', err);
+  }
+
+  // ── Users (RPC) ────────────────────────────────────────────────────
   try {
     const { data, error } = await supabaseClient.rpc('list_users');
     if (error) throw error;
@@ -222,12 +254,13 @@ async function syncAllDataFromSupabase() {
         ? new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         : '—'
     }));
-    console.log(`   ✓ Users: ${registeredUsersDB.length}`);
+    console.log('   ✓ Users:', registeredUsersDB.length);
   } catch (err) {
     console.error('Sync "users" failed:', err);
     registeredUsersDB = [];
   }
 
+  // ── Attendance ─────────────────────────────────────────────────────
   try {
     const { data, error } = await supabaseClient
       .from('attendance').select('*')
@@ -241,10 +274,12 @@ async function syncAllDataFromSupabase() {
       location: row.location, note: row.note || '',
       timestamp: row.timestamp_iso
     }));
+    console.log('   ✓ Attendance:', attendanceLogs.length);
   } catch (err) {
     console.error('Sync "attendance" failed:', err);
   }
 
+  // ── Pings ──────────────────────────────────────────────────────────
   try {
     const { data, error } = await supabaseClient
       .from('pings').select('*')
@@ -257,6 +292,7 @@ async function syncAllDataFromSupabase() {
         month: 'short', day: 'numeric', year: 'numeric'
       })
     }));
+    console.log('   ✓ Pings:', announcements.length);
   } catch (err) {
     console.error('Sync "pings" failed:', err);
   }
@@ -1332,7 +1368,7 @@ async function clearAttendanceLog() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 16: ARCHIVE GRID (with restore + delete per card)
+//  SECTION 16: ARCHIVE GRID
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateArchiveGrid() {
@@ -1945,7 +1981,6 @@ function generateNotificationBar() {
 function injectAdminClearButtons() {
   if (!currentUser || currentUser.role !== 'ADMIN') return;
 
-  // ── Clear All Archived Projects button ───────────────────────────
   const arcBadge = document.getElementById('archiveCountBadge');
   if (arcBadge && !document.getElementById('clearArchivedProjectsBtn')) {
     const btn = document.createElement('button');
@@ -1961,7 +1996,6 @@ function injectAdminClearButtons() {
     arcBadge.parentNode.insertBefore(btn, arcBadge);
   }
 
-  // ── Clear Closed-Out Reports button ──────────────────────────────
   const arcRepBadge = document.getElementById('archiveReportsCountBadge');
   if (arcRepBadge && !document.getElementById('clearArchiveReportsBtn')) {
     const btn = document.createElement('button');
@@ -1977,7 +2011,6 @@ function injectAdminClearButtons() {
     arcRepBadge.parentNode.insertBefore(btn, arcRepBadge);
   }
 
-  // ── Clear Activity Summaries button ──────────────────────────────
   const actSumBadge = document.getElementById('activitySummaryCountBadge');
   if (actSumBadge && !document.getElementById('clearActivitySummariesBtn')) {
     const btn = document.createElement('button');
@@ -1993,7 +2026,6 @@ function injectAdminClearButtons() {
     actSumBadge.parentNode.insertBefore(btn, actSumBadge);
   }
 
-  // ── Clear Source Vault button ────────────────────────────────────
   const addSourceBtn = document.getElementById('addSourceBtn');
   if (addSourceBtn && !document.getElementById('clearSourcesBtn')) {
     const btn = document.createElement('button');
@@ -2411,7 +2443,7 @@ function initializeApp() {
     });
   });
 
-  console.log('✅ JCompass initialized (v2.4)');
+  console.log('✅ JCompass initialized (v2.5)');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
