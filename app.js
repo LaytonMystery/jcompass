@@ -1,10 +1,9 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
  * ║  JOURNALIST'S COMPASS v2.0 — Newsroom Operations Terminal           ║
- * ║  A complete newsroom management dashboard for journalists            ║
+ * ║  Full dashboard controller. Auth is handled by auth-guard.js/login.js║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
-
 
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 1: CONFIGURATION & ENVIRONMENT
@@ -12,12 +11,11 @@
 
 const SUPABASE_URL = 'https://odqfqaywzwvxkvqptzxo.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_6CWGOKOIj4aXmRpidG6dVA_nYvcctoP';
+const SESSION_KEY = 'jcompass_session';
 
 let supabaseClient = null;
 let realtimePingsChannel = null;
 let realtimeAttendanceChannel = null;
-
-// ── Supabase Client Management ────────────────────────────────────────
 
 function isSupabaseConfigured() {
   return !!(SUPABASE_URL && SUPABASE_ANON_KEY && typeof window.supabase !== 'undefined');
@@ -31,7 +29,6 @@ function initSupabaseClient() {
   supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   console.log('JCompass: Supabase client initialized.');
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 2: SAFE STORAGE UTILITIES
@@ -60,14 +57,24 @@ function safeSaveJSON(key, value) {
   }
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 3: APPLICATION STATE
 // ═══════════════════════════════════════════════════════════════════════
 
-// ── Session & UI State ────────────────────────────────────────────────
+// currentUser comes from auth-guard.js (window.JCOMPASS_SESSION)
+let currentUser = (function () {
+  try {
+    const s = window.JCOMPASS_SESSION ||
+              JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    return (s && s.user) ? s.user : null;
+  } catch { return null; }
+})();
 
-let currentUser = safeLoadJSON('jcompass_user', null);
+if (!currentUser) {
+  // auth-guard.js should have redirected already. Belt-and-braces.
+  window.location.replace('login.html');
+}
+
 let currentFilter = 'ALL';
 let searchQuery = '';
 let calendarMonth = new Date().getMonth();
@@ -77,47 +84,20 @@ let attendanceSearchQuery = '';
 let archiveSearchQuery = '';
 let activeProfileId = null;
 
-// ── Data Stores ───────────────────────────────────────────────────────
-
-let registeredUsersDB = safeLoadJSON('jcompass_accounts_db', null);
-if (!registeredUsersDB || registeredUsersDB.length === 0) {
-  registeredUsersDB = [
-    { name: 'Admin Account', pass: 'admin123', role: 'ADMIN', code: 'AA', created: 'Aug 11, 2026' },
-    { name: 'Staff Reporter', pass: 'staff123', role: 'STAFF', code: 'SR', created: 'Aug 11, 2026' }
-  ];
-  localStorage.setItem('jcompass_accounts_db', JSON.stringify(registeredUsersDB));
-}
-
-let projects = safeLoadJSON('jcompass_projects', [
-  { id: 101, title: 'Global Supply Route Friction Analytics', category: 'INVESTIGATIVE', deadline: '2026-08-12', status: 'ACTIVE', priority: 'HIGH', progress: 65, reporter: 'Staff Reporter', notes: '', tags: 'exclusive,urgent', archived: false },
-  { id: 102, title: 'Mayoral Campaign Expenditure Audits', category: 'BREAKING', deadline: '2026-08-20', status: 'IN REVIEW', priority: 'HIGH', progress: 80, reporter: 'Staff Reporter', notes: '', tags: 'follow-up', archived: false },
-  { id: 103, title: 'Local Tech Ecosystem Multi-Tier Integration', category: 'FEATURES', deadline: '2026-08-28', status: 'FILED', priority: 'MEDIUM', progress: 100, reporter: '', notes: '', tags: '', archived: false }
-]);
-
-let assignments = safeLoadJSON('jcompass_assignments', [
-  { id: 201, title: 'Interview Chief of Police regarding recent data breach anomalies', assignee: 'Staff Reporter' }
-]);
-
-let beats = safeLoadJSON('jcompass_beats', [
-  { id: 301, name: 'City Hall Hallways Desk', reporter: 'Lead Editor', priority: 'HIGH', imgData: '' }
-]);
-
-let events = safeLoadJSON('jcompass_events', [
-  { id: 401, name: 'Press Conference Security Briefing Room B', date: '2026-08-18', completed: false }
-]);
-
-let announcements = safeLoadJSON('jcompass_announcements', [
-  { id: 501, sender: 'Admin Account', target: 'ALL', text: 'All field correspondents report telemetry logs before 1800 hours sync.', timestamp: 'Aug 11, 2026' }
-]);
-
-let archiveRequests = safeLoadJSON('jcompass_archive_requests', []);
-let attendanceLogs = safeLoadJSON('jcompass_attendance', []);
-let sources = safeLoadJSON('jcompass_sources', []);
+// ── Data Stores (loaded from Supabase; local cache only) ──────────────
+let registeredUsersDB = safeLoadJSON('jcompass_accounts_db', []);
+let projects          = safeLoadJSON('jcompass_projects', []);
+let assignments       = safeLoadJSON('jcompass_assignments', []);
+let beats             = safeLoadJSON('jcompass_beats', []);
+let events            = safeLoadJSON('jcompass_events', []);
+let announcements     = safeLoadJSON('jcompass_announcements', []);
+let archiveRequests   = safeLoadJSON('jcompass_archive_requests', []);
+let attendanceLogs    = safeLoadJSON('jcompass_attendance', []);
+let sources           = safeLoadJSON('jcompass_sources', []);
 let sourceRemovalRequests = safeLoadJSON('jcompass_source_removal_requests', []);
-let archivedReports = safeLoadJSON('jcompass_archived_reports', []);
+let archivedReports   = safeLoadJSON('jcompass_archived_reports', []);
 let activitySummaries = safeLoadJSON('jcompass_activity_summaries', []);
 let dismissedNoticeIds = safeLoadJSON('jcompass_dismissed_notices', []);
-
 
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 4: PERSISTENCE LAYER
@@ -138,12 +118,9 @@ function flushStateToDisk() {
   safeSaveJSON('jcompass_source_removal_requests', sourceRemovalRequests);
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 5: SUPABASE REMOTE SYNC
 // ═══════════════════════════════════════════════════════════════════════
-
-// ── Pings / Announcements Sync ────────────────────────────────────────
 
 async function syncRemotePings() {
   if (!supabaseClient) return;
@@ -178,13 +155,12 @@ function mergeIncomingPing(row, isLive) {
 }
 
 async function publishPingRemote(payload) {
+  if (!supabaseClient) return;
   const { error } = await supabaseClient.from('pings').insert({
     sender: payload.sender, target: payload.target, message: payload.text
   });
   if (error) throw error;
 }
-
-// ── Attendance Sync ───────────────────────────────────────────────────
 
 async function syncRemoteAttendance() {
   if (!supabaseClient) return;
@@ -241,8 +217,6 @@ async function publishAttendanceRemote(entry) {
   }
 }
 
-// ── Full Data Sync ────────────────────────────────────────────────────
-
 async function syncAllDataFromSupabase() {
   if (!supabaseClient) return;
 
@@ -252,14 +226,17 @@ async function syncAllDataFromSupabase() {
     { table: 'beats',       store: 'beats',       mapper: b => ({ id: b.id, name: b.name, reporter: b.reporter || '', priority: b.priority || 'MEDIUM', imgData: b.img_data || '' }) },
     { table: 'sources',     store: 'sources',     mapper: s => ({ id: s.id, name: s.name, beat: s.beat || '', contact: s.contact || '', reliability: s.reliability || 'MEDIUM', notes: s.notes || '', createdBy: s.created_by || 'Unknown' }) },
     { table: 'events',      store: 'events',      mapper: e => ({ id: e.id, name: e.name, date: e.date, completed: e.completed || false, archived: e.archived || false, locationNote: e.location_note || '' }) },
-    { table: 'users',       store: 'registeredUsersDB', mapper: u => ({ name: u.name, pass: u.pass, role: u.role, code: u.code, created: new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }) }
+    { table: 'users',       store: 'registeredUsersDB', mapper: u => ({ name: u.name, pass: u.pass, role: u.role, code: u.code, created: u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' }) }
   ];
 
   for (const { table, store, mapper } of syncMap) {
     try {
-      const { data } = await supabaseClient.from(table).select('*');
+      const { data, error } = await supabaseClient.from(table).select('*');
+      if (error) throw error;
       if (data && data.length > 0) {
         window[store] = data.map(mapper);
+      } else if (data && data.length === 0) {
+        window[store] = [];
       }
     } catch (err) {
       console.error('Sync ' + table + ' failed:', err);
@@ -267,10 +244,8 @@ async function syncAllDataFromSupabase() {
   }
 
   flushStateToDisk();
-  rebuildApplicationDOMViews();
   console.log('✅ All data synced from Supabase');
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 6: NOTIFICATIONS & PINGS
@@ -345,54 +320,51 @@ function dispatchPing(sender, target, text) {
     generateAnnouncementsStream();
     notifyIncomingPing(payload);
   }
-}
 
+  // OneSignal push
+  if (typeof sendPushNotification === 'function') {
+    if (target === 'ALL') {
+      sendPushNotification('📰 Newsroom Broadcast', sender + ': ' + text);
+    } else {
+      sendPushNotification('📌 Direct Ping from ' + sender, text, target);
+    }
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 7: AUTHENTICATION & SESSION MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════
 
-function enforceSessionGuard() {
-  const gateOverlay = document.getElementById('authScreen');
-  if (!gateOverlay) return;
-  if (currentUser) {
-    gateOverlay.style.display = 'none';
-    document.body.setAttribute('data-user-clearance', currentUser.role);
-    evaluateClearancePermissions();
-    rebuildApplicationDOMViews();
-    if (supabaseClient) {
-      syncRemotePings();
-      syncRemoteAttendance();
-    }
-  } else {
-    gateOverlay.style.display = 'flex';
-  }
-}
+async function enforceSessionGuard() {
+  if (!currentUser) return;
+  document.body.setAttribute('data-user-clearance', currentUser.role);
 
-function processCredentialsAuthentication() {
-  const userBox = document.getElementById('username').value.trim();
-  const passBox = document.getElementById('password').value.trim();
-  const errorNode = document.getElementById('authError');
-  const matchUser = registeredUsersDB.find(u => u.name.toLowerCase() === userBox.toLowerCase() && u.pass === passBox);
-  if (matchUser) {
-    currentUser = { name: matchUser.name, code: matchUser.code, role: matchUser.role };
-    localStorage.setItem('jcompass_user', JSON.stringify(currentUser));
-    if (errorNode) errorNode.style.display = 'none';
-    
-    // Set OneSignal user ID
-    setOneSignalUser(matchUser.name);
-    
-    enforceSessionGuard();
-    triggerNotificationToast('Welcome ' + currentUser.name);
-  } else {
-    if (errorNode) errorNode.style.display = 'block';
+  // Load backend data first, then render
+  if (supabaseClient) {
+    try {
+      await syncAllDataFromSupabase();
+    } catch (err) {
+      console.error('Initial sync failed:', err);
+    }
+  }
+
+  evaluateClearancePermissions();
+  rebuildApplicationDOMViews();
+
+  if (supabaseClient) {
+    syncRemotePings();
+    syncRemoteAttendance();
+  }
+
+  // Identify device to OneSignal
+  if (typeof setOneSignalUser === 'function') {
+    setOneSignalUser(currentUser.name);
   }
 }
 
 function evaluateClearancePermissions() {
   if (!currentUser) return;
 
-  // Update UI elements
   const targetLabel = document.getElementById('displayName');
   const targetRole = document.getElementById('displayRole');
   const avatarBadge = document.getElementById('avatarBadgeIcon');
@@ -400,15 +372,13 @@ function evaluateClearancePermissions() {
 
   if (targetLabel) targetLabel.innerText = currentUser.name;
   if (targetRole) targetRole.innerText = currentUser.role;
-  if (avatarBadge) avatarBadge.innerText = currentUser.code;
+  if (avatarBadge) avatarBadge.innerText = currentUser.code || 'JC';
   if (sidebarInput) sidebarInput.value = currentUser.name;
 
-  // Admin-only navigation
   document.querySelectorAll('.admin-only-nav').forEach(el => {
     el.style.display = (currentUser.role === 'ADMIN') ? '' : 'none';
   });
 
-  // Ping target dropdown
   const pingSelect = document.getElementById('announcePingTarget');
   if (pingSelect) {
     pingSelect.innerHTML = '<option value="ALL">@All Desks</option>';
@@ -419,7 +389,6 @@ function evaluateClearancePermissions() {
     });
   }
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 8: MASTER VIEW REBUILDER
@@ -443,12 +412,9 @@ function rebuildApplicationDOMViews() {
   generateNotificationBar();
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 9: DASHBOARD & PROJECTS
 // ═══════════════════════════════════════════════════════════════════════
-
-// ── Dashboard Statistics ──────────────────────────────────────────────
 
 function generateDashboardStats() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -490,8 +456,6 @@ function getUrgencyLabel(deadline) {
   if (diff <= 3) return '<span class="urgency-soon">⏳ ' + diff + 'd left</span>';
   return '<span class="urgency-ok">✓ ' + diff + 'd left</span>';
 }
-
-// ── Project Grid ──────────────────────────────────────────────────────
 
 function generateProjectDashboard() {
   const container = document.getElementById('projectGrid');
@@ -540,8 +504,6 @@ function generateProjectDashboard() {
     });
   });
 }
-
-// ── Project Profile Modal ─────────────────────────────────────────────
 
 function openProjectProfile(projectId) {
   const p = projects.find(x => x.id === projectId);
@@ -605,7 +567,6 @@ function requestArchiveProject(projectId) {
   triggerNotificationToast('Archive request submitted.');
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 10: ANNOUNCEMENTS & STAFF
 // ═══════════════════════════════════════════════════════════════════════
@@ -639,6 +600,11 @@ function generateStaffDirectory() {
   if (!container) return;
   container.innerHTML = '';
 
+  if (registeredUsersDB.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem;">No personnel loaded.</div>';
+    return;
+  }
+
   registeredUsersDB.forEach(user => {
     const row = document.createElement('div');
     row.className = 'staff-directory-row' + (user.role === 'ADMIN' ? ' role-admin' : '');
@@ -648,7 +614,6 @@ function generateStaffDirectory() {
   });
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 11: BEATS & ASSIGNMENTS
 // ═══════════════════════════════════════════════════════════════════════
@@ -657,6 +622,11 @@ function generateBeatsGrid() {
   const container = document.getElementById('beatsGrid');
   if (!container) return;
   container.innerHTML = '';
+
+  if (beats.length === 0) {
+    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No beats configured yet.</div>';
+    return;
+  }
 
   beats.forEach(b => {
     const card = document.createElement('div');
@@ -674,6 +644,11 @@ function generateAssignmentsGrid() {
   if (!container) return;
   container.innerHTML = '';
 
+  if (assignments.length === 0) {
+    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No assignments yet.</div>';
+    return;
+  }
+
   assignments.forEach(a => {
     const card = document.createElement('div');
     card.className = 'card';
@@ -684,7 +659,6 @@ function generateAssignmentsGrid() {
   });
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 12: EVENTS & CALENDAR
 // ═══════════════════════════════════════════════════════════════════════
@@ -693,6 +667,11 @@ function generateEventsTrackerChecklist() {
   const container = document.getElementById('eventsChecklistContainer');
   if (!container) return;
   container.innerHTML = '';
+
+  if (events.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem;">No events scheduled.</div>';
+    return;
+  }
 
   events.forEach(evt => {
     const div = document.createElement('div');
@@ -735,7 +714,6 @@ function generateDeadlineCalendarGrid() {
     container.appendChild(cell);
   }
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 13: ATTENDANCE & GEO-TRACKING
@@ -825,7 +803,6 @@ async function reverseGeocodeLabel(lat, lon) {
 
 function processFieldTelemetryMarking() {
   const btn = document.getElementById('markAttendanceBtn');
-  const loggerNode = document.getElementById('telemetryStatus');
   if (!btn || !currentUser) return;
 
   if (hasCheckedInToday()) {
@@ -883,7 +860,6 @@ function initAttendancePage() {
     if (btn) { btn.innerText = '✓ Checked In Today'; btn.style.background = 'var(--success)'; }
   }
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 14: ARCHIVES & REPORTS
@@ -972,7 +948,6 @@ function generateActivitySummaryReport() {
   triggerNotificationToast('Summary generated.');
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 15: SOURCE VAULT
 // ═══════════════════════════════════════════════════════════════════════
@@ -1003,7 +978,6 @@ function generateSourcesGrid() {
   });
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 16: USER MANAGEMENT (ADMIN)
 // ═══════════════════════════════════════════════════════════════════════
@@ -1012,6 +986,11 @@ function generateUsersTable() {
   const tbody = document.getElementById('usersTableBody');
   if (!tbody) return;
   tbody.innerHTML = '';
+
+  if (registeredUsersDB.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="padding:2rem;text-align:center;color:var(--text-muted);">No users loaded from backend.</td></tr>';
+    return;
+  }
 
   registeredUsersDB.forEach(user => {
     const tr = document.createElement('tr');
@@ -1026,7 +1005,7 @@ function generateUsersTable() {
   });
 }
 
-function createNewUser() {
+async function createNewUser() {
   const name = document.getElementById('newUserName').value.trim();
   const pass = document.getElementById('newUserPass').value.trim();
   const role = document.getElementById('newUserRole').value;
@@ -1039,6 +1018,26 @@ function createNewUser() {
   const parts = name.split(' ');
   const code = parts.length > 1 ? (parts[0][0] + parts[1][0]).toUpperCase() : name.substring(0, 2).toUpperCase();
 
+  // Try backend first
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient.from('users').insert({ name, pass, role, code });
+      if (error) {
+        if (error.code === '23505') {
+          triggerNotificationToast('Username already exists.');
+        } else {
+          triggerNotificationToast('Backend error: ' + error.message);
+        }
+        return;
+      }
+    } catch (err) {
+      console.error('Create user failed:', err);
+      triggerNotificationToast('Failed to reach backend.');
+      return;
+    }
+  }
+
+  // Also update local cache
   registeredUsersDB.push({
     name: name, pass: pass, role: role, code: code,
     created: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -1049,7 +1048,6 @@ function createNewUser() {
   document.getElementById('addUserModal').classList.remove('active');
   triggerNotificationToast('Account "' + name + '" created.');
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 17: NOTIFICATION BAR
@@ -1076,7 +1074,7 @@ function generateNotificationBar() {
 
   const notices = [];
   if (overdue.length > 0) {
-    notices.push({ id: 'overdue-' + overdue.length, type: 'danger', icon: '⚠', text: overdue.length + ' project(s) overdue.', actionLabel: 'View', actionPage: 'dashboard' });
+    notices.push({ id: 'overdue-' + overdue.length, type: 'danger', icon: '⚠', text: overdue.length + ' project(s) overdue.' });
   }
 
   const visible = notices.filter(n => !dismissedNoticeIds.includes(n.id));
@@ -1093,25 +1091,11 @@ function generateNotificationBar() {
   });
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════
 //  SECTION 18: APPLICATION INITIALIZATION
 // ═══════════════════════════════════════════════════════════════════════
 
 function initializeApp() {
-  // ── Login ──────────────────────────────────────────────────────────
-  const loginBtn = document.getElementById('loginSubmitBtn');
-  if (loginBtn) loginBtn.onclick = processCredentialsAuthentication;
-
-  ['username', 'password'].forEach(id => {
-    const field = document.getElementById(id);
-    if (field) {
-      field.onkeydown = function(e) {
-        if (e.key === 'Enter') processCredentialsAuthentication();
-      };
-    }
-  });
-
   // ── Supabase ───────────────────────────────────────────────────────
   initSupabaseClient();
 
@@ -1119,7 +1103,7 @@ function initializeApp() {
   const savedTheme = localStorage.getItem('jcompass_theme') || 'forest';
   document.body.setAttribute('data-theme-profile', savedTheme);
 
-  // ── Session ────────────────────────────────────────────────────────
+  // ── Session + initial render ───────────────────────────────────────
   enforceSessionGuard();
 
   // ── Navigation ─────────────────────────────────────────────────────
@@ -1132,26 +1116,53 @@ function initializeApp() {
       const pageEl = document.getElementById('page-' + targetPage);
       if (pageEl) pageEl.classList.add('active');
       const breadcrumb = document.getElementById('breadcrumbCurrent');
-      if (breadcrumb) breadcrumb.innerText = nav.querySelector('.nav-label').innerText;
+      if (breadcrumb && nav.querySelector('.nav-label')) {
+        breadcrumb.innerText = nav.querySelector('.nav-label').innerText;
+      }
       if (targetPage === 'attend') initAttendancePage();
       if (targetPage === 'calendar') generateDeadlineCalendarGrid();
     });
   });
 
-  // ── Menu Toggle ────────────────────────────────────────────────────
+  // ── Sidebar toggle ─────────────────────────────────────────────────
+  const sidebarEl = document.getElementById('sidebar');
   const menuToggle = document.getElementById('menuToggle');
-  if (menuToggle) {
-    menuToggle.addEventListener('click', () => {
-      document.getElementById('sidebar').classList.toggle('active');
-    });
+  if (menuToggle && sidebarEl) {
+    menuToggle.addEventListener('click', () => sidebarEl.classList.toggle('active'));
   }
+
+  // ── Sidebar close button ───────────────────────────────────────────
+  const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
+  if (sidebarCloseBtn && sidebarEl) {
+    sidebarCloseBtn.addEventListener('click', () => sidebarEl.classList.remove('active'));
+  }
+
+  // Auto-close sidebar after picking a page on tablet/mobile
+  document.addEventListener('click', (e) => {
+    if (window.innerWidth > 992 || !sidebarEl || !sidebarEl.classList.contains('active')) return;
+    const navItem = e.target.closest('.nav-item');
+    if (!navItem) return;
+    sidebarEl.classList.remove('active');
+  });
+
+  // Close sidebar on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && sidebarEl) sidebarEl.classList.remove('active');
+  });
+
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 992 && sidebarEl) sidebarEl.classList.remove('active');
+  });
 
   // ── Sign Out ───────────────────────────────────────────────────────
   const signOutBtn = document.getElementById('signOutBtn');
   if (signOutBtn) {
     signOutBtn.addEventListener('click', () => {
-      localStorage.removeItem('jcompass_user');
-      location.reload();
+      try {
+        localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem('jcompass_user');
+      } catch (e) {}
+      window.location.replace('login.html');
     });
   }
 
@@ -1249,7 +1260,8 @@ function initializeApp() {
   document.querySelectorAll('[data-close]').forEach(btn => {
     btn.addEventListener('click', () => {
       const modalId = btn.getAttribute('data-close');
-      document.getElementById(modalId).classList.remove('active');
+      const modal = document.getElementById(modalId);
+      if (modal) modal.classList.remove('active');
     });
   });
 
@@ -1267,7 +1279,10 @@ function initializeApp() {
 
   modalButtons.forEach(({ btnId, modalId }) => {
     const btn = document.getElementById(btnId);
-    if (btn) btn.addEventListener('click', () => document.getElementById(modalId).classList.add('active'));
+    if (btn) btn.addEventListener('click', () => {
+      const modal = document.getElementById(modalId);
+      if (modal) modal.classList.add('active');
+    });
   });
 
   // ── Save Beat ──────────────────────────────────────────────────────
@@ -1322,7 +1337,15 @@ function initializeApp() {
       const newName = input.value.trim();
       if (!newName) return;
       currentUser.name = newName;
-      localStorage.setItem('jcompass_user', JSON.stringify(currentUser));
+      try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        const s = raw ? JSON.parse(raw) : null;
+        if (s && s.user) {
+          s.user.name = newName;
+          localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+          window.JCOMPASS_SESSION = s;
+        }
+      } catch (e) {}
       evaluateClearancePermissions();
       triggerNotificationToast('Name updated.');
     });
@@ -1360,79 +1383,51 @@ function initializeApp() {
   console.log('✅ JCompass initialized successfully');
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 19: BOOTSTRAP
+//  SECTION 19: SETTINGS / CONTROL TRAY WIRING
 // ═══════════════════════════════════════════════════════════════════════
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeApp);
-} else {
-  initializeApp();
-}
-
-//
-//
-//
-
-// Settings Gear Button
-const settingsGearBtn = document.getElementById('settingsGearBtn');
-if (settingsGearBtn) {
-  settingsGearBtn.addEventListener('click', () => {
+(function wireControlTray() {
+  function openTray() {
     const tray = document.getElementById('controlTray');
     const trayOverlay = document.getElementById('controlTrayOverlay');
     if (tray) tray.classList.add('active');
     if (trayOverlay) trayOverlay.classList.add('active');
-  });
-}
-
-// Settings Sidebar Button
-const settingsSidebarBtn = document.getElementById('settingsSidebarBtn');
-if (settingsSidebarBtn) {
-  settingsSidebarBtn.addEventListener('click', () => {
+  }
+  function closeTray() {
     const tray = document.getElementById('controlTray');
     const trayOverlay = document.getElementById('controlTrayOverlay');
-    if (tray) tray.classList.add('active');
-    if (trayOverlay) trayOverlay.classList.add('active');
-  });
-}
-
-// User Chip Click (existing)
-const userChip = document.getElementById('userAvatarBtn');
-if (userChip) {
-  userChip.addEventListener('click', () => {
-    const tray = document.getElementById('controlTray');
-    const trayOverlay = document.getElementById('controlTrayOverlay');
-    if (tray) tray.classList.add('active');
-    if (trayOverlay) trayOverlay.classList.add('active');
-  });
-}
-
-// Close Tray
-const trayClose = document.getElementById('controlTrayCloseBtn');
-const trayOverlay = document.getElementById('controlTrayOverlay');
-if (trayClose) {
-  trayClose.addEventListener('click', () => {
-    const tray = document.getElementById('controlTray');
     if (tray) tray.classList.remove('active');
     if (trayOverlay) trayOverlay.classList.remove('active');
-  });
-}
-if (trayOverlay) {
-  trayOverlay.addEventListener('click', () => {
-    const tray = document.getElementById('controlTray');
-    if (tray) tray.classList.remove('active');
-    trayOverlay.classList.remove('active');
-  });
-}
-// ===================== ONESIGNAL PUSH NOTIFICATIONS =====================
+  }
+
+  const gearBtn = document.getElementById('settingsGearBtn');
+  if (gearBtn) gearBtn.addEventListener('click', openTray);
+
+  const sideBtn = document.getElementById('settingsSidebarBtn');
+  if (sideBtn) sideBtn.addEventListener('click', openTray);
+
+  const userChip = document.getElementById('userAvatarBtn');
+  if (userChip) userChip.addEventListener('click', openTray);
+
+  const trayClose = document.getElementById('controlTrayCloseBtn');
+  if (trayClose) trayClose.addEventListener('click', closeTray);
+
+  const trayOverlay = document.getElementById('controlTrayOverlay');
+  if (trayOverlay) trayOverlay.addEventListener('click', closeTray);
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 20: ONESIGNAL PUSH NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════════════
+
 const ONESIGNAL_APP_ID = 'e76cbe01-1a76-4f3d-a45d-9d155a126093';
 const ONESIGNAL_API_KEY = 'os_v2_app_45wl4ai2ozht3jc5tukvuetasocbd7a6dhwu2amqs23bpvmhaaeqpcgmitmhidymddsixetmj4uovgolydndk7lgmszycyc43sqhw4q';
 
 async function sendPushNotification(title, message, targetUserName = null) {
   try {
     const notificationData = {
-      app_id: 'e76cbe01-1a76-4f3d-a45d-9d155a126093',
+      app_id: ONESIGNAL_APP_ID,
       contents: { en: message },
       headings: { en: title },
       priority: 10,
@@ -1440,22 +1435,22 @@ async function sendPushNotification(title, message, targetUserName = null) {
       chrome_web_icon: 'https://cdn-icons-png.flaticon.com/512/148/148813.png',
       chrome_web_badge: 'https://cdn-icons-png.flaticon.com/512/148/148813.png',
     };
-    
+
     if (targetUserName) {
       notificationData.include_external_user_ids = [targetUserName];
     } else {
       notificationData.included_segments = ['Subscribed Users'];
     }
-    
+
     const response = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Key os_v2_app_45wl4ai2ozht3jc5tukvuetasocbd7a6dhwu2amqs23bpvmhaaeqpcgmitmhidymddsixetmj4uovgolydndk7lgmszycyc43sqhw4q'
+        'Authorization': 'Key ' + ONESIGNAL_API_KEY
       },
       body: JSON.stringify(notificationData)
     });
-    
+
     const result = await response.json();
     console.log('Push notification sent:', result);
     return result;
@@ -1464,38 +1459,6 @@ async function sendPushNotification(title, message, targetUserName = null) {
   }
 }
 
-// Update dispatchPing to send push notifications
-function dispatchPing(sender, target, text) {
-  const payload = {
-    id: Date.now() + Math.floor(Math.random() * 1000),
-    sender: sender, target: target, text: text,
-    timestamp: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  };
-  
-  if (supabaseClient) {
-    publishPingRemote(payload).catch(err => console.error('Failed to publish ping:', err));
-  } else {
-    announcements.push(payload);
-    flushStateToDisk();
-    generateAnnouncementsStream();
-    notifyIncomingPing(payload);
-  }
-  
-  // Send push notification via OneSignal
-  if (target === 'ALL') {
-    sendPushNotification(
-      '📰 Newsroom Broadcast',
-      sender + ': ' + text
-    );
-  } else {
-    sendPushNotification(
-      '📌 Direct Ping from ' + sender,
-      text,
-      target // Send to specific user
-    );
-  }
-}
-// Set external user ID when logged in
 async function setOneSignalUser(userName) {
   if (window.OneSignal) {
     try {
@@ -1505,4 +1468,14 @@ async function setOneSignalUser(userName) {
       console.error('OneSignal login failed:', err);
     }
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 21: BOOTSTRAP
+// ═══════════════════════════════════════════════════════════════════════
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+  initializeApp();
 }
