@@ -1,22 +1,27 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v2.0                                          ║
- * ║  Full dashboard controller. Supabase is the SINGLE source of truth. ║
- * ║  Local storage is used ONLY as a read-through cache for display.    ║
+ * ║  JOURNALIST'S COMPASS v2.1                                          ║
+ * ║  Supabase is the SINGLE source of truth.                            ║
+ * ║  Local storage = disposable read cache only (versioned).            ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 1: CONFIGURATION
+//  SECTION 1: CONFIG
 // ═══════════════════════════════════════════════════════════════════════
 
 const SUPABASE_URL = 'https://odqfqaywzwvxkvqptzxo.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_6CWGOKOIj4aXmRpidG6dVA_nYvcctoP';
 const SESSION_KEY = 'jcompass_session';
 
+// Bumping the version makes any old cache keys orphaned
+const CACHE_VERSION = 'v2';
+const CACHE_PREFIX  = 'jcompass_' + CACHE_VERSION + '_';
+
 let supabaseClient = null;
 let realtimePingsChannel = null;
 let realtimeAttendanceChannel = null;
+let realtimeArchiveChannel = null;
 
 function initSupabaseClient() {
   if (typeof window.supabase === 'undefined') {
@@ -28,21 +33,41 @@ function initSupabaseClient() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 2: LOCAL CACHE (read-only speed helper — NOT source of truth)
+//  SECTION 2: ONE-TIME LEGACY WIPE + VERSIONED CACHE
 // ═══════════════════════════════════════════════════════════════════════
 
+function wipeLegacyCache() {
+  // Remove any old jcompass_* keys that don't use the current version prefix.
+  // Preserves session + theme (user preferences).
+  const keep = ['jcompass_session', 'jcompass_theme'];
+  const toRemove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    if (!key.startsWith('jcompass_')) continue;
+    if (keep.includes(key)) continue;
+    if (key.startsWith(CACHE_PREFIX)) continue;
+    toRemove.push(key);
+  }
+  toRemove.forEach(k => {
+    try { localStorage.removeItem(k); } catch (e) {}
+    console.log('JCompass: wiped legacy cache key:', k);
+  });
+  if (toRemove.length > 0) {
+    console.log('JCompass: legacy wipe complete — ' + toRemove.length + ' keys removed.');
+  }
+}
+
 const CACHE_KEYS = {
-  projects:    'jcompass_projects',
-  assignments: 'jcompass_assignments',
-  beats:       'jcompass_beats',
-  events:      'jcompass_events',
-  announcements: 'jcompass_announcements',
-  attendance:  'jcompass_attendance',
-  sources:     'jcompass_sources',
-  archiveRequests: 'jcompass_archive_requests',
-  archivedReports: 'jcompass_archived_reports',
-  activitySummaries: 'jcompass_activity_summaries',
-  dismissedNotices: 'jcompass_dismissed_notices'
+  projects:          CACHE_PREFIX + 'projects',
+  assignments:       CACHE_PREFIX + 'assignments',
+  beats:             CACHE_PREFIX + 'beats',
+  events:            CACHE_PREFIX + 'events',
+  announcements:     CACHE_PREFIX + 'announcements',
+  attendance:        CACHE_PREFIX + 'attendance',
+  sources:           CACHE_PREFIX + 'sources',
+  archiveRequests:   CACHE_PREFIX + 'archive_requests',
+  dismissedNotices:  'jcompass_dismissed_notices' // unversioned — user preference
 };
 
 function cacheLoad(key, fallback) {
@@ -58,17 +83,13 @@ function cacheLoad(key, fallback) {
 }
 
 function cacheSave(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (err) {
-    console.warn('JCompass: cache write failed for "' + key + '".', err);
-  }
+  try { localStorage.setItem(key, JSON.stringify(value)); }
+  catch (err) { console.warn('JCompass: cache write failed for "' + key + '".', err); }
 }
 
 function cacheClearAll() {
-  // Clears every cached collection. Called before a fresh Supabase sync
-  // so stale data can't bleed through if a table fails to load.
   Object.values(CACHE_KEYS).forEach(k => {
+    if (k === 'jcompass_dismissed_notices') return; // keep user prefs
     try { localStorage.removeItem(k); } catch (e) {}
   });
 }
@@ -77,7 +98,6 @@ function cacheClearAll() {
 //  SECTION 3: APPLICATION STATE
 // ═══════════════════════════════════════════════════════════════════════
 
-// Session comes from auth-guard.js
 let currentUser = (function () {
   try {
     const s = window.JCOMPASS_SESSION ||
@@ -86,9 +106,7 @@ let currentUser = (function () {
   } catch { return null; }
 })();
 
-if (!currentUser) {
-  window.location.replace('login.html');
-}
+if (!currentUser) window.location.replace('login.html');
 
 // UI state
 let currentFilter = 'ALL';
@@ -99,27 +117,21 @@ let sourceSearchQuery = '';
 let attendanceSearchQuery = '';
 let activeProfileId = null;
 
-// ── Data stores ──────────────────────────────────────────────────────
-// These are populated from Supabase on every load. The cached copies
-// shown here are only to render something instantly while sync is running.
-// Users are NEVER read from cache — they only come from the RPC.
-
-let projects          = cacheLoad(CACHE_KEYS.projects, []);
-let assignments       = cacheLoad(CACHE_KEYS.assignments, []);
-let beats             = cacheLoad(CACHE_KEYS.beats, []);
-let events            = cacheLoad(CACHE_KEYS.events, []);
-let announcements     = cacheLoad(CACHE_KEYS.announcements, []);
-let attendanceLogs    = cacheLoad(CACHE_KEYS.attendance, []);
-let sources           = cacheLoad(CACHE_KEYS.sources, []);
-
-let registeredUsersDB = [];   // ⚠️ NEVER read from localStorage. Supabase only.
-let archiveRequests   = [];   // TODO: add archive_requests table to Supabase
-let archivedReports   = [];   // TODO: add archived_reports table to Supabase
-let activitySummaries = [];   // TODO: add activity_summaries table to Supabase
+// Data stores — populated from Supabase on every boot.
+// Users are NEVER read from cache.
+let projects          = [];
+let assignments       = [];
+let beats             = [];
+let events            = [];
+let announcements     = [];
+let attendanceLogs    = [];
+let sources           = [];
+let archiveRequests   = [];
+let registeredUsersDB = [];
 let dismissedNoticeIds = cacheLoad(CACHE_KEYS.dismissedNotices, []);
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 4: CACHE FLUSH (called after every successful Supabase write)
+//  SECTION 4: CACHE FLUSH
 // ═══════════════════════════════════════════════════════════════════════
 
 function flushCachedCollections() {
@@ -130,7 +142,7 @@ function flushCachedCollections() {
   cacheSave(CACHE_KEYS.announcements, announcements);
   cacheSave(CACHE_KEYS.attendance, attendanceLogs);
   cacheSave(CACHE_KEYS.sources, sources);
-  cacheSave(CACHE_KEYS.dismissedNotices, dismissedNoticeIds);
+  cacheSave(CACHE_KEYS.archiveRequests, archiveRequests);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -145,7 +157,7 @@ async function syncAllDataFromSupabase() {
 
   console.log('🔄 Syncing all data from Supabase...');
 
-  // ── Direct table reads (RLS is permissive on these) ────────────────
+  // ── Direct table reads ─────────────────────────────────────────────
   const tables = [
     {
       table: 'projects', key: 'projects',
@@ -183,6 +195,17 @@ async function syncAllDataFromSupabase() {
         reliability: s.reliability || 'MEDIUM', notes: s.notes || '',
         createdBy: s.created_by || 'Unknown'
       })
+    },
+    {
+      table: 'archive_requests', key: 'archiveRequests',
+      map: r => ({
+        id: r.id,
+        project_id: r.project_id,
+        project_title: r.project_title || '',
+        requester: r.requester,
+        request_timestamp: r.request_timestamp || '',
+        status: r.status || 'PENDING'
+      })
     }
   ];
 
@@ -194,19 +217,15 @@ async function syncAllDataFromSupabase() {
       window[key] = (data || []).map(map);
     } catch (err) {
       console.error(`Sync "${table}" failed:`, err);
-      // Don't overwrite existing data on failure — keep the cache
     }
   }
 
-  // ── Users (via RPC — RLS blocks direct reads) ─────────────────────
+  // ── Users via RPC ──────────────────────────────────────────────────
   try {
     const { data, error } = await supabaseClient.rpc('list_users');
     if (error) throw error;
     registeredUsersDB = (data || []).map(u => ({
-      id: u.id,
-      name: u.name,
-      role: u.role,
-      code: u.code,
+      id: u.id, name: u.name, role: u.role, code: u.code,
       created: u.created_at
         ? new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         : '—'
@@ -217,7 +236,7 @@ async function syncAllDataFromSupabase() {
     registeredUsersDB = [];
   }
 
-  // ── Attendance (last 500 records) ─────────────────────────────────
+  // ── Attendance ─────────────────────────────────────────────────────
   try {
     const { data, error } = await supabaseClient
       .from('attendance').select('*')
@@ -235,7 +254,7 @@ async function syncAllDataFromSupabase() {
     console.error('Sync "attendance" failed:', err);
   }
 
-  // ── Pings (announcements) ─────────────────────────────────────────
+  // ── Pings ──────────────────────────────────────────────────────────
   try {
     const { data, error } = await supabaseClient
       .from('pings').select('*')
@@ -256,12 +275,13 @@ async function syncAllDataFromSupabase() {
   console.log('✅ Sync complete.');
 }
 
-// ── Realtime subscriptions ────────────────────────────────────────────
+// ── Realtime ─────────────────────────────────────────────────────────
 
-async function subscribeRealtimePings() {
+async function subscribeRealtime() {
   if (!supabaseClient) return;
-  if (realtimePingsChannel) supabaseClient.removeChannel(realtimePingsChannel);
 
+  // Pings
+  if (realtimePingsChannel) supabaseClient.removeChannel(realtimePingsChannel);
   realtimePingsChannel = supabaseClient
     .channel('pings-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pings' }, (payload) => {
@@ -286,12 +306,9 @@ async function subscribeRealtimePings() {
       generateAnnouncementsStream();
     })
     .subscribe();
-}
 
-async function subscribeRealtimeAttendance() {
-  if (!supabaseClient) return;
+  // Attendance
   if (realtimeAttendanceChannel) supabaseClient.removeChannel(realtimeAttendanceChannel);
-
   realtimeAttendanceChannel = supabaseClient
     .channel('attendance-realtime')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'attendance' }, (payload) => {
@@ -308,6 +325,27 @@ async function subscribeRealtimeAttendance() {
       flushCachedCollections();
       renderAttendanceTable();
       updateAttendanceStats();
+    })
+    .subscribe();
+
+  // Archive requests
+  if (realtimeArchiveChannel) supabaseClient.removeChannel(realtimeArchiveChannel);
+  realtimeArchiveChannel = supabaseClient
+    .channel('archive-requests-realtime')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'archive_requests' }, async () => {
+      // Just re-sync this table — simpler than merging payloads
+      try {
+        const { data } = await supabaseClient.from('archive_requests').select('*').order('id', { ascending: true });
+        archiveRequests = (data || []).map(r => ({
+          id: r.id, project_id: r.project_id,
+          project_title: r.project_title || '',
+          requester: r.requester,
+          request_timestamp: r.request_timestamp || '',
+          status: r.status || 'PENDING'
+        }));
+        flushCachedCollections();
+        renderArchiveRequestsPanel();
+      } catch (e) { /* silent */ }
     })
     .subscribe();
 }
@@ -389,7 +427,6 @@ async function dispatchPing(sender, target, text) {
     return;
   }
 
-  // OneSignal push
   if (typeof sendPushNotification === 'function') {
     if (target === 'ALL') {
       sendPushNotification('📰 Newsroom Broadcast', sender + ': ' + text);
@@ -407,17 +444,13 @@ async function enforceSessionGuard() {
   if (!currentUser) return;
   document.body.setAttribute('data-user-clearance', currentUser.role);
 
-  // CRITICAL: wipe cache before sync so stale data can't leak through
   cacheClearAll();
-
   try { await syncAllDataFromSupabase(); }
   catch (err) { console.error('Sync failed:', err); }
 
   evaluateClearancePermissions();
   rebuildApplicationDOMViews();
-
-  subscribeRealtimePings();
-  subscribeRealtimeAttendance();
+  subscribeRealtime();
 
   if (typeof setOneSignalUser === 'function') setOneSignalUser(currentUser.name);
 }
@@ -425,9 +458,9 @@ async function enforceSessionGuard() {
 function evaluateClearancePermissions() {
   if (!currentUser) return;
 
-  const targetLabel = document.getElementById('displayName');
-  const targetRole  = document.getElementById('displayRole');
-  const avatarBadge = document.getElementById('avatarBadgeIcon');
+  const targetLabel  = document.getElementById('displayName');
+  const targetRole   = document.getElementById('displayRole');
+  const avatarBadge  = document.getElementById('avatarBadgeIcon');
   const sidebarInput = document.getElementById('sidebarNameInput');
 
   if (targetLabel) targetLabel.innerText = currentUser.name;
@@ -465,6 +498,7 @@ function rebuildApplicationDOMViews() {
   generateDeadlineCalendarGrid();
   initAttendancePage();
   generateArchiveGrid();
+  renderArchiveRequestsPanel();
   generateSourcesGrid();
   generateUsersTable();
   generateNotificationBar();
@@ -567,12 +601,62 @@ function openProjectProfile(projectId) {
   document.getElementById('profileNotes').value = p.notes || '';
   document.getElementById('profileTags').value = p.tags || '';
   document.getElementById('profileStatusSelect').value = p.status || 'ACTIVE';
+
+  applyProfilePermissions(p);
+
   document.getElementById('projectProfileModal').classList.add('active');
+}
+
+function applyProfilePermissions(p) {
+  const isAdmin = currentUser.role === 'ADMIN';
+
+  const archiveBtn = document.getElementById('profileArchiveBtn');
+  const deleteBtn  = document.getElementById('profileDeleteBtn');
+  const requestBtn = document.getElementById('profileRequestArchiveBtn');
+  const staffNotice = document.getElementById('profileStaffNotice');
+  const saveBtn = document.getElementById('profileSaveBtn');
+
+  // Admin: archive + delete + save. No request button.
+  if (archiveBtn) archiveBtn.style.display = isAdmin ? '' : 'none';
+  if (deleteBtn)  deleteBtn.style.display  = isAdmin ? '' : 'none';
+  if (saveBtn)    saveBtn.style.display    = isAdmin ? '' : 'none';
+  if (staffNotice) staffNotice.style.display = isAdmin ? 'none' : 'flex';
+
+  // Form fields: read-only for staff
+  ['profileProgressInput','profileAssignedReporter','profileNotes','profileTags','profileStatusSelect'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !isAdmin;
+  });
+
+  // Staff: request button — reflect pending state
+  if (requestBtn) {
+    if (isAdmin) {
+      requestBtn.style.display = 'none';
+    } else {
+      const hasPending = archiveRequests.some(
+        r => r.project_id === p.id &&
+             r.requester === currentUser.name &&
+             r.status === 'PENDING'
+      );
+      requestBtn.style.display = '';
+      if (hasPending) {
+        requestBtn.disabled = true;
+        requestBtn.innerText = '⏳ Request Pending';
+      } else {
+        requestBtn.disabled = false;
+        requestBtn.innerText = '📤 Request Archive';
+      }
+    }
+  }
 }
 
 async function saveProjectProfile() {
   const p = projects.find(x => x.id === activeProfileId);
   if (!p) return;
+  if (currentUser.role !== 'ADMIN') {
+    triggerNotificationToast('Admin clearance required.');
+    return;
+  }
 
   const updates = {
     progress: parseInt(document.getElementById('profileProgressInput').value) || 0,
@@ -601,8 +685,10 @@ async function saveProjectProfile() {
 }
 
 async function archiveProject(projectId) {
+  if (currentUser.role !== 'ADMIN') return;
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
+
   if (supabaseClient) {
     try {
       const { error } = await supabaseClient.from('projects').update({ archived: true }).eq('id', projectId);
@@ -614,12 +700,15 @@ async function archiveProject(projectId) {
   }
   p.archived = true;
   flushCachedCollections();
+  document.getElementById('projectProfileModal').classList.remove('active');
   rebuildApplicationDOMViews();
   triggerNotificationToast('Project archived.');
 }
 
 async function deleteProject(projectId) {
-  if (!confirm('Delete this project?')) return;
+  if (currentUser.role !== 'ADMIN') return;
+  if (!confirm('Delete this project permanently?')) return;
+
   if (supabaseClient) {
     try {
       const { error } = await supabaseClient.from('projects').delete().eq('id', projectId);
@@ -631,12 +720,174 @@ async function deleteProject(projectId) {
   }
   projects = projects.filter(x => x.id !== projectId);
   flushCachedCollections();
+  document.getElementById('projectProfileModal').classList.remove('active');
   rebuildApplicationDOMViews();
   triggerNotificationToast('Project deleted.');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 10: ANNOUNCEMENTS
+//  SECTION 10: ARCHIVE REQUESTS (new)
+// ═══════════════════════════════════════════════════════════════════════
+
+async function submitArchiveRequest(projectId) {
+  const p = projects.find(x => x.id === projectId);
+  if (!p) return;
+
+  const hasPending = archiveRequests.some(
+    r => r.project_id === projectId &&
+         r.requester === currentUser.name &&
+         r.status === 'PENDING'
+  );
+  if (hasPending) {
+    triggerNotificationToast('You already have a pending request.');
+    return;
+  }
+
+  const payload = {
+    project_id: projectId,
+    project_title: p.title,
+    requester: currentUser.name,
+    request_timestamp: new Date().toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric'
+    }),
+    status: 'PENDING'
+  };
+
+  if (supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('archive_requests').insert(payload).select().single();
+      if (error) throw error;
+      payload.id = data ? data.id : Date.now();
+    } catch (err) {
+      console.error('Submit archive request failed:', err);
+      triggerNotificationToast('Backend error: ' + err.message);
+      return;
+    }
+  } else {
+    payload.id = Date.now();
+  }
+
+  archiveRequests.push(payload);
+  flushCachedCollections();
+  document.getElementById('projectProfileModal').classList.remove('active');
+  triggerNotificationToast('Archive request submitted.');
+}
+
+async function approveArchiveRequest(requestId) {
+  if (currentUser.role !== 'ADMIN') return;
+  const req = archiveRequests.find(r => r.id === requestId);
+  if (!req) return;
+  if (!confirm('Approve this request? The project will be archived.')) return;
+
+  if (supabaseClient) {
+    try {
+      const { error: reqErr } = await supabaseClient
+        .from('archive_requests').update({ status: 'APPROVED' }).eq('id', requestId);
+      if (reqErr) throw reqErr;
+
+      const { error: projErr } = await supabaseClient
+        .from('projects').update({ archived: true }).eq('id', req.project_id);
+      if (projErr) throw projErr;
+    } catch (err) {
+      console.error('Approve archive request failed:', err);
+      triggerNotificationToast('Backend error: ' + err.message);
+      return;
+    }
+  }
+
+  req.status = 'APPROVED';
+  const p = projects.find(x => x.id === req.project_id);
+  if (p) p.archived = true;
+
+  flushCachedCollections();
+  rebuildApplicationDOMViews();
+  triggerNotificationToast('Archive request approved.');
+}
+
+async function denyArchiveRequest(requestId) {
+  if (currentUser.role !== 'ADMIN') return;
+  const req = archiveRequests.find(r => r.id === requestId);
+  if (!req) return;
+  if (!confirm('Deny this archive request?')) return;
+
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient
+        .from('archive_requests').update({ status: 'DENIED' }).eq('id', requestId);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Deny archive request failed:', err);
+      triggerNotificationToast('Backend error: ' + err.message);
+      return;
+    }
+  }
+
+  req.status = 'DENIED';
+  flushCachedCollections();
+  renderArchiveRequestsPanel();
+  triggerNotificationToast('Archive request denied.');
+}
+
+// Ensure the panel container exists in the DOM (injected above archiveGrid)
+function ensureArchiveRequestsPanel() {
+  if (document.getElementById('archiveRequestsPanel')) return;
+  const grid = document.getElementById('archiveGrid');
+  if (!grid) return;
+  const panel = document.createElement('div');
+  panel.id = 'archiveRequestsPanel';
+  panel.className = 'archive-requests-panel';
+  panel.style.display = 'none';
+  grid.parentNode.insertBefore(panel, grid);
+}
+
+function renderArchiveRequestsPanel() {
+  ensureArchiveRequestsPanel();
+  const panel = document.getElementById('archiveRequestsPanel');
+  if (!panel) return;
+
+  if (!currentUser || currentUser.role !== 'ADMIN') {
+    panel.style.display = 'none';
+    return;
+  }
+
+  const pending = archiveRequests.filter(r => r.status === 'PENDING');
+  if (pending.length === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'block';
+  panel.innerHTML =
+    '<div class="archive-req-header">' +
+      '<span>📥 Pending Archive Requests</span>' +
+      '<span class="archive-req-count">' + pending.length + '</span>' +
+    '</div>' +
+    '<div class="archive-req-list">' +
+      pending.map(r =>
+        '<div class="archive-req-row">' +
+          '<div class="archive-req-info">' +
+            '<div style="font-weight:700;font-size:0.9rem;">' + r.project_title + '</div>' +
+            '<div style="font-size:0.75rem;color:var(--text-muted);">Requested by <b>' + r.requester + '</b> • ' + (r.request_timestamp || '') + '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;">' +
+            '<button class="req-approve-btn" data-req-approve="' + r.id + '">✓ Approve</button>' +
+            '<button class="req-deny-btn" data-req-deny="' + r.id + '">✕ Deny</button>' +
+          '</div>' +
+        '</div>'
+      ).join('') +
+    '</div>';
+
+  panel.querySelectorAll('[data-req-approve]').forEach(btn => {
+    btn.addEventListener('click', () => approveArchiveRequest(parseInt(btn.dataset.reqApprove)));
+  });
+  panel.querySelectorAll('[data-req-deny]').forEach(btn => {
+    btn.addEventListener('click', () => denyArchiveRequest(parseInt(btn.dataset.reqDeny)));
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 11: ANNOUNCEMENTS
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateAnnouncementsStream() {
@@ -685,7 +936,6 @@ async function deleteAnnouncement(annId) {
       const { error } = await supabaseClient.from('pings').delete().eq('id', remoteId);
       if (error) throw error;
     } catch (err) {
-      console.error('Delete ping failed:', err);
       triggerNotificationToast('Failed to delete from backend.');
       return;
     }
@@ -717,7 +967,7 @@ function generateStaffDirectory() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 11: BEATS
+//  SECTION 12: BEATS
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateBeatsGrid() {
@@ -773,7 +1023,7 @@ async function archiveBeat(beatId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 12: ASSIGNMENTS
+//  SECTION 13: ASSIGNMENTS
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateAssignmentsGrid() {
@@ -828,7 +1078,7 @@ async function archiveAssignment(asgId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 13: EVENTS & CALENDAR
+//  SECTION 14: EVENTS & CALENDAR
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateEventsTrackerChecklist() {
@@ -886,7 +1136,7 @@ function generateDeadlineCalendarGrid() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 14: ATTENDANCE
+//  SECTION 15: ATTENDANCE
 // ═══════════════════════════════════════════════════════════════════════
 
 function renderAttendanceTable() {
@@ -1052,14 +1302,13 @@ async function clearAttendanceLog() {
     triggerNotificationToast('Admin clearance required.');
     return;
   }
-  if (!confirm('Permanently clear ALL attendance records? This cannot be undone.')) return;
+  if (!confirm('Permanently clear ALL attendance records?')) return;
 
   if (supabaseClient) {
     try {
       const { error } = await supabaseClient.from('attendance').delete().neq('id', -1);
       if (error) throw error;
     } catch (err) {
-      console.error('Clear attendance failed:', err);
       triggerNotificationToast('Backend error: ' + err.message);
       return;
     }
@@ -1073,7 +1322,7 @@ async function clearAttendanceLog() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 15: ARCHIVE VIEW
+//  SECTION 16: ARCHIVE GRID (project cards)
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateArchiveGrid() {
@@ -1102,7 +1351,7 @@ function generateArchiveGrid() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 16: SOURCES
+//  SECTION 17: SOURCES
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateSourcesGrid() {
@@ -1132,7 +1381,7 @@ function generateSourcesGrid() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 17: USER MANAGEMENT (RPC-backed — never cached locally)
+//  SECTION 18: USER MANAGEMENT (RPC only — never cached)
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateUsersTable() {
@@ -1200,15 +1449,14 @@ async function createNewUser() {
       return;
     }
   } catch (err) {
-    console.error('Create user failed:', err);
     triggerNotificationToast('Failed to reach backend.');
     return;
   }
 
-  // Re-pull users from backend so the new one appears with its true ID
   await refreshUsersFromBackend();
   generateUsersTable();
   generateStaffDirectory();
+  evaluateClearancePermissions();
 
   document.getElementById('addUserModal').classList.remove('active');
   document.getElementById('newUserName').value = '';
@@ -1232,7 +1480,6 @@ async function deleteUserFromAdmin(userId, userName) {
     const { error } = await supabaseClient.rpc('delete_user', { p_id: userId });
     if (error) throw error;
   } catch (err) {
-    console.error('Delete user failed:', err);
     triggerNotificationToast('Delete failed: ' + err.message);
     return;
   }
@@ -1240,6 +1487,7 @@ async function deleteUserFromAdmin(userId, userName) {
   registeredUsersDB = registeredUsersDB.filter(u => u.id !== userId);
   generateUsersTable();
   generateStaffDirectory();
+  evaluateClearancePermissions();
   triggerNotificationToast('User "' + userName + '" deleted.');
 }
 
@@ -1260,7 +1508,7 @@ async function refreshUsersFromBackend() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 18: CSV EXPORT
+//  SECTION 19: CSV EXPORT
 // ═══════════════════════════════════════════════════════════════════════
 
 function downloadCSV(filename, rows) {
@@ -1311,7 +1559,7 @@ function exportAttendanceCSV() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 19: NOTIFICATION BAR
+//  SECTION 20: NOTIFICATION BAR
 // ═══════════════════════════════════════════════════════════════════════
 
 function dismissNotice(noticeId) {
@@ -1338,6 +1586,19 @@ function generateNotificationBar() {
     notices.push({ id: 'overdue-' + overdue.length, type: 'danger', icon: '⚠', text: overdue.length + ' project(s) overdue.' });
   }
 
+  // Admins also see pending archive requests count
+  if (currentUser.role === 'ADMIN') {
+    const pendingReqs = archiveRequests.filter(r => r.status === 'PENDING').length;
+    if (pendingReqs > 0) {
+      notices.push({
+        id: 'archive-reqs-' + pendingReqs,
+        type: 'warning',
+        icon: '📥',
+        text: pendingReqs + ' archive request(s) awaiting your review.'
+      });
+    }
+  }
+
   const visible = notices.filter(n => !dismissedNoticeIds.includes(n.id));
   container.innerHTML = visible.map(n =>
     '<div class="notice-bar notice-' + n.type + '">' +
@@ -1353,10 +1614,13 @@ function generateNotificationBar() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 20: INITIALIZATION
+//  SECTION 21: INITIALIZATION
 // ═══════════════════════════════════════════════════════════════════════
 
 function initializeApp() {
+  // One-time legacy wipe so old data can't linger
+  wipeLegacyCache();
+
   initSupabaseClient();
 
   const savedTheme = localStorage.getItem('jcompass_theme') || 'forest';
@@ -1377,6 +1641,7 @@ function initializeApp() {
       if (breadcrumb && nav.querySelector('.nav-label')) breadcrumb.innerText = nav.querySelector('.nav-label').innerText;
       if (targetPage === 'attend') initAttendancePage();
       if (targetPage === 'calendar') generateDeadlineCalendarGrid();
+      if (targetPage === 'archive') renderArchiveRequestsPanel();
     });
   });
 
@@ -1462,7 +1727,6 @@ function initializeApp() {
           if (error) throw error;
           if (data) payload.id = data.id;
         } catch (err) {
-          console.error('Create project failed:', err);
           triggerNotificationToast('Backend error: ' + err.message);
           return;
         }
@@ -1505,7 +1769,6 @@ function initializeApp() {
           if (error) throw error;
           payload.id = data ? data.id : Date.now();
         } catch (err) {
-          console.error('Save source failed:', err);
           triggerNotificationToast('Backend error: ' + err.message);
           return;
         }
@@ -1549,29 +1812,25 @@ function initializeApp() {
   const attSearch = document.getElementById('attendanceSearchInput');
   if (attSearch) attSearch.addEventListener('input', (e) => { attendanceSearchQuery = e.target.value; renderAttendanceTable(); });
 
-  // ── Activity summary (local only — TODO: add Supabase table) ───────
-  const genSummaryBtn = document.getElementById('generateActivitySummaryBtn');
-  if (genSummaryBtn) {
-    genSummaryBtn.addEventListener('click', () => {
-      if (!currentUser || currentUser.role !== 'ADMIN') return;
-      const activeProjects = projects.filter(p => !p.archived).length;
-      const archivedCount = projects.filter(p => p.archived).length;
-      const todayStr = new Date().toLocaleDateString('en-CA');
-      const todayCheckins = attendanceLogs.filter(l => l.date === todayStr).length;
-
-      activitySummaries.push({
-        id: Date.now(),
-        title: 'Summary ' + new Date().toLocaleDateString(),
-        summary: 'Active: ' + activeProjects + ', Archived: ' + archivedCount + ', Check-ins today: ' + todayCheckins,
-        closedBy: currentUser.name
-      });
-      triggerNotificationToast('Summary generated (in-memory only).');
-    });
-  }
-
   // ── Save project profile ───────────────────────────────────────────
   const saveProfileBtn = document.getElementById('profileSaveBtn');
   if (saveProfileBtn) saveProfileBtn.addEventListener('click', saveProjectProfile);
+
+  // ── Project modal: archive / delete / request archive ──────────────
+  const profileArchiveBtn = document.getElementById('profileArchiveBtn');
+  if (profileArchiveBtn) profileArchiveBtn.addEventListener('click', () => {
+    if (activeProfileId != null) archiveProject(activeProfileId);
+  });
+
+  const profileDeleteBtn = document.getElementById('profileDeleteBtn');
+  if (profileDeleteBtn) profileDeleteBtn.addEventListener('click', () => {
+    if (activeProfileId != null) deleteProject(activeProfileId);
+  });
+
+  const profileRequestArchiveBtn = document.getElementById('profileRequestArchiveBtn');
+  if (profileRequestArchiveBtn) profileRequestArchiveBtn.addEventListener('click', () => {
+    if (activeProfileId != null) submitArchiveRequest(activeProfileId);
+  });
 
   // ── Modal close buttons ────────────────────────────────────────────
   document.querySelectorAll('[data-close]').forEach(btn => {
@@ -1619,7 +1878,6 @@ function initializeApp() {
           if (error) throw error;
           payload.id = data ? data.id : Date.now();
         } catch (err) {
-          console.error('Save beat failed:', err);
           triggerNotificationToast('Backend error: ' + err.message);
           return;
         }
@@ -1653,7 +1911,6 @@ function initializeApp() {
           if (error) throw error;
           payload.id = data ? data.id : Date.now();
         } catch (err) {
-          console.error('Save assignment failed:', err);
           triggerNotificationToast('Backend error: ' + err.message);
           return;
         }
@@ -1687,7 +1944,6 @@ function initializeApp() {
           if (error) throw error;
           payload.id = data ? data.id : Date.now();
         } catch (err) {
-          console.error('Save event failed:', err);
           triggerNotificationToast('Backend error: ' + err.message);
           return;
         }
@@ -1738,11 +1994,11 @@ function initializeApp() {
     });
   });
 
-  console.log('✅ JCompass initialized');
+  console.log('✅ JCompass initialized (v2.1 — Supabase-only)');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 21: CONTROL TRAY
+//  SECTION 22: CONTROL TRAY
 // ═══════════════════════════════════════════════════════════════════════
 
 (function wireControlTray() {
@@ -1772,7 +2028,7 @@ function initializeApp() {
 })();
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 22: ONESIGNAL
+//  SECTION 23: ONESIGNAL
 // ═══════════════════════════════════════════════════════════════════════
 
 const ONESIGNAL_APP_ID = 'e76cbe01-1a76-4f3d-a45d-9d155a126093';
@@ -1812,7 +2068,7 @@ async function setOneSignalUser(userName) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 23: BOOTSTRAP
+//  SECTION 24: BOOTSTRAP
 // ═══════════════════════════════════════════════════════════════════════
 
 if (document.readyState === 'loading') {
