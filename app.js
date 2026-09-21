@@ -1,12 +1,11 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v2.0 — Newsroom Operations Terminal           ║
- * ║  Full dashboard controller. Auth is handled by auth-guard.js/login.js║
+ * ║  JOURNALIST'S COMPASS v2.0 — Full Dashboard Controller              ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 1: CONFIGURATION & ENVIRONMENT
+//  SECTION 1: CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════════
 
 const SUPABASE_URL = 'https://odqfqaywzwvxkvqptzxo.supabase.co';
@@ -17,13 +16,9 @@ let supabaseClient = null;
 let realtimePingsChannel = null;
 let realtimeAttendanceChannel = null;
 
-function isSupabaseConfigured() {
-  return !!(SUPABASE_URL && SUPABASE_ANON_KEY && typeof window.supabase !== 'undefined');
-}
-
 function initSupabaseClient() {
-  if (!isSupabaseConfigured()) {
-    console.info('JCompass: Supabase not configured — running in local-only mode.');
+  if (typeof window.supabase === 'undefined') {
+    console.info('JCompass: Supabase not loaded.');
     return;
   }
   supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -31,7 +26,7 @@ function initSupabaseClient() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 2: SAFE STORAGE UTILITIES
+//  SECTION 2: SAFE STORAGE
 // ═══════════════════════════════════════════════════════════════════════
 
 function safeLoadJSON(key, fallback) {
@@ -41,8 +36,7 @@ function safeLoadJSON(key, fallback) {
     const parsed = JSON.parse(raw);
     return (parsed === null || parsed === undefined) ? fallback : parsed;
   } catch (err) {
-    console.warn('JCompass: corrupted localStorage entry "' + key + '" — resetting to default.', err);
-    try { localStorage.removeItem(key); } catch (e) { }
+    try { localStorage.removeItem(key); } catch (e) {}
     return fallback;
   }
 }
@@ -52,7 +46,7 @@ function safeSaveJSON(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
     return true;
   } catch (err) {
-    console.error('JCompass: failed to save "' + key + '" to localStorage.', err);
+    console.error('JCompass: failed to save "' + key + '"', err);
     return false;
   }
 }
@@ -61,7 +55,6 @@ function safeSaveJSON(key, value) {
 //  SECTION 3: APPLICATION STATE
 // ═══════════════════════════════════════════════════════════════════════
 
-// currentUser comes from auth-guard.js (window.JCOMPASS_SESSION)
 let currentUser = (function () {
   try {
     const s = window.JCOMPASS_SESSION ||
@@ -71,7 +64,6 @@ let currentUser = (function () {
 })();
 
 if (!currentUser) {
-  // auth-guard.js should have redirected already. Belt-and-braces.
   window.location.replace('login.html');
 }
 
@@ -81,10 +73,8 @@ let calendarMonth = new Date().getMonth();
 let calendarYear = new Date().getFullYear();
 let sourceSearchQuery = '';
 let attendanceSearchQuery = '';
-let archiveSearchQuery = '';
 let activeProfileId = null;
 
-// ── Data Stores (loaded from Supabase; local cache only) ──────────────
 let registeredUsersDB = safeLoadJSON('jcompass_accounts_db', []);
 let projects          = safeLoadJSON('jcompass_projects', []);
 let assignments       = safeLoadJSON('jcompass_assignments', []);
@@ -94,13 +84,12 @@ let announcements     = safeLoadJSON('jcompass_announcements', []);
 let archiveRequests   = safeLoadJSON('jcompass_archive_requests', []);
 let attendanceLogs    = safeLoadJSON('jcompass_attendance', []);
 let sources           = safeLoadJSON('jcompass_sources', []);
-let sourceRemovalRequests = safeLoadJSON('jcompass_source_removal_requests', []);
 let archivedReports   = safeLoadJSON('jcompass_archived_reports', []);
 let activitySummaries = safeLoadJSON('jcompass_activity_summaries', []);
 let dismissedNoticeIds = safeLoadJSON('jcompass_dismissed_notices', []);
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 4: PERSISTENCE LAYER
+//  SECTION 4: PERSISTENCE
 // ═══════════════════════════════════════════════════════════════════════
 
 function flushStateToDisk() {
@@ -115,11 +104,10 @@ function flushStateToDisk() {
   safeSaveJSON('jcompass_sources', sources);
   safeSaveJSON('jcompass_archived_reports', archivedReports);
   safeSaveJSON('jcompass_activity_summaries', activitySummaries);
-  safeSaveJSON('jcompass_source_removal_requests', sourceRemovalRequests);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 5: SUPABASE REMOTE SYNC
+//  SECTION 5: SUPABASE SYNC
 // ═══════════════════════════════════════════════════════════════════════
 
 async function syncRemotePings() {
@@ -129,9 +117,8 @@ async function syncRemotePings() {
     if (error) throw error;
     (data || []).forEach(row => mergeIncomingPing(row, false));
     rebuildApplicationDOMViews();
-  } catch (err) {
-    console.error('Failed to load pings:', err);
-  }
+  } catch (err) { console.error('Failed to load pings:', err); }
+
   if (realtimePingsChannel) supabaseClient.removeChannel(realtimePingsChannel);
   realtimePingsChannel = supabaseClient
     .channel('pings-realtime')
@@ -180,9 +167,8 @@ async function syncRemoteAttendance() {
     saveAttendanceLogs();
     renderAttendanceTable();
     updateAttendanceStats();
-  } catch (err) {
-    console.error('Failed to load attendance:', err);
-  }
+  } catch (err) { console.error('Failed to load attendance:', err); }
+
   if (realtimeAttendanceChannel) supabaseClient.removeChannel(realtimeAttendanceChannel);
   realtimeAttendanceChannel = supabaseClient
     .channel('attendance-realtime')
@@ -212,9 +198,7 @@ async function publishAttendanceRemote(entry) {
       location: entry.location, note: entry.note || '', timestamp_iso: entry.timestamp
     });
     if (error) throw error;
-  } catch (err) {
-    console.error('Failed to publish attendance:', err);
-  }
+  } catch (err) { console.error('Failed to publish attendance:', err); }
 }
 
 async function syncAllDataFromSupabase() {
@@ -222,40 +206,54 @@ async function syncAllDataFromSupabase() {
 
   const syncMap = [
     { table: 'projects',    store: 'projects',    mapper: p => ({ id: p.id, title: p.title, category: p.category, deadline: p.deadline, status: p.status, priority: p.priority, progress: p.progress, reporter: p.reporter || '', notes: p.notes || '', tags: p.tags || '', archived: p.archived || false }) },
-    { table: 'assignments', store: 'assignments', mapper: a => ({ id: a.id, title: a.title, assignee: a.assignee || '' }) },
-    { table: 'beats',       store: 'beats',       mapper: b => ({ id: b.id, name: b.name, reporter: b.reporter || '', priority: b.priority || 'MEDIUM', imgData: b.img_data || '' }) },
+    { table: 'assignments', store: 'assignments', mapper: a => ({ id: a.id, title: a.title, assignee: a.assignee || '', archived: a.archived || false }) },
+    { table: 'beats',       store: 'beats',       mapper: b => ({ id: b.id, name: b.name, reporter: b.reporter || '', priority: b.priority || 'MEDIUM', imgData: b.img_data || '', archived: b.archived || false }) },
     { table: 'sources',     store: 'sources',     mapper: s => ({ id: s.id, name: s.name, beat: s.beat || '', contact: s.contact || '', reliability: s.reliability || 'MEDIUM', notes: s.notes || '', createdBy: s.created_by || 'Unknown' }) },
-    { table: 'events',      store: 'events',      mapper: e => ({ id: e.id, name: e.name, date: e.date, completed: e.completed || false, archived: e.archived || false, locationNote: e.location_note || '' }) },
-    { table: 'users',       store: 'registeredUsersDB', mapper: u => ({ name: u.name, pass: u.pass, role: u.role, code: u.code, created: u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' }) }
+    { table: 'events',      store: 'events',      mapper: e => ({ id: e.id, name: e.name, date: e.date, completed: e.completed || false, archived: e.archived || false }) }
   ];
 
   for (const { table, store, mapper } of syncMap) {
     try {
       const { data, error } = await supabaseClient.from(table).select('*');
       if (error) throw error;
-      if (data && data.length > 0) {
-        window[store] = data.map(mapper);
-      } else if (data && data.length === 0) {
-        window[store] = [];
-      }
+      window[store] = (data || []).map(mapper);
     } catch (err) {
       console.error('Sync ' + table + ' failed:', err);
     }
   }
 
+  // Users come from RPC (RLS blocks direct reads)
+  try {
+    const { data, error } = await supabaseClient.rpc('list_users');
+    if (error) throw error;
+    if (Array.isArray(data)) {
+      registeredUsersDB = data.map(u => ({
+        id: u.id,
+        name: u.name,
+        role: u.role,
+        code: u.code,
+        created: u.created_at
+          ? new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : '—'
+      }));
+    }
+  } catch (err) {
+    console.error('Sync users failed:', err);
+  }
+
   flushStateToDisk();
-  console.log('✅ All data synced from Supabase');
+  console.log('✅ Synced from Supabase');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 6: NOTIFICATIONS & PINGS
+//  SECTION 6: NOTIFICATIONS
 // ═══════════════════════════════════════════════════════════════════════
 
 function refreshNotificationPermissionUI() {
   const btn = document.getElementById('enableNotificationsBtn');
   const label = document.getElementById('notificationStatusLabel');
   if (!btn || !label || !('Notification' in window)) {
-    if (label) label.textContent = 'Push alerts not supported in this browser.';
+    if (label) label.textContent = 'Push alerts not supported.';
     if (btn) btn.style.display = 'none';
     return;
   }
@@ -266,7 +264,7 @@ function refreshNotificationPermissionUI() {
   } else if (Notification.permission === 'denied') {
     btn.textContent = '🔕 Push Alerts Blocked';
     btn.disabled = true;
-    label.textContent = 'Notifications blocked in browser settings.';
+    label.textContent = 'Notifications blocked in browser.';
   } else {
     btn.textContent = '🔔 Enable Push Alerts';
     btn.disabled = false;
@@ -291,7 +289,7 @@ function notifyIncomingPing(ann) {
   const canShowNative = ('Notification' in window) && Notification.permission === 'granted';
 
   if (canShowNative && document.hidden) {
-    const n = new Notification(title, { body: body, icon: 'https://cdn-icons-png.flaticon.com/512/148/148813.png' });
+    const n = new Notification(title, { body, icon: 'https://cdn-icons-png.flaticon.com/512/148/148813.png' });
     n.onclick = () => { window.focus(); n.close(); };
   } else {
     triggerNotificationToast(body);
@@ -309,11 +307,11 @@ function triggerNotificationToast(strMessage) {
 function dispatchPing(sender, target, text) {
   const payload = {
     id: Date.now() + Math.floor(Math.random() * 1000),
-    sender: sender, target: target, text: text,
+    sender, target, text,
     timestamp: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   };
   if (supabaseClient) {
-    publishPingRemote(payload).catch(err => console.error('Failed to publish ping:', err));
+    publishPingRemote(payload).catch(err => console.error('Publish ping failed:', err));
   } else {
     announcements.push(payload);
     flushStateToDisk();
@@ -321,7 +319,6 @@ function dispatchPing(sender, target, text) {
     notifyIncomingPing(payload);
   }
 
-  // OneSignal push
   if (typeof sendPushNotification === 'function') {
     if (target === 'ALL') {
       sendPushNotification('📰 Newsroom Broadcast', sender + ': ' + text);
@@ -332,20 +329,15 @@ function dispatchPing(sender, target, text) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 7: AUTHENTICATION & SESSION MANAGEMENT
+//  SECTION 7: AUTH/SESSION
 // ═══════════════════════════════════════════════════════════════════════
 
 async function enforceSessionGuard() {
   if (!currentUser) return;
   document.body.setAttribute('data-user-clearance', currentUser.role);
 
-  // Load backend data first, then render
   if (supabaseClient) {
-    try {
-      await syncAllDataFromSupabase();
-    } catch (err) {
-      console.error('Initial sync failed:', err);
-    }
+    try { await syncAllDataFromSupabase(); } catch (err) { console.error('Sync failed:', err); }
   }
 
   evaluateClearancePermissions();
@@ -356,10 +348,7 @@ async function enforceSessionGuard() {
     syncRemoteAttendance();
   }
 
-  // Identify device to OneSignal
-  if (typeof setOneSignalUser === 'function') {
-    setOneSignalUser(currentUser.name);
-  }
+  if (typeof setOneSignalUser === 'function') setOneSignalUser(currentUser.name);
 }
 
 function evaluateClearancePermissions() {
@@ -391,7 +380,7 @@ function evaluateClearancePermissions() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 8: MASTER VIEW REBUILDER
+//  SECTION 8: MASTER REBUILD
 // ═══════════════════════════════════════════════════════════════════════
 
 function rebuildApplicationDOMViews() {
@@ -433,28 +422,12 @@ function generateDashboardStats() {
   const todayStr = today.toLocaleDateString('en-CA');
   const todayCheckins = attendanceLogs.filter(l => l.date === todayStr).length;
 
-  const elActive = document.getElementById('statActiveProjects');
-  const elOverdue = document.getElementById('statOverdue');
-  const elSoon = document.getElementById('statDueSoon');
-  const elStaff = document.getElementById('statStaffCount');
-  const elCheckins = document.getElementById('statTodayCheckins');
-
-  if (elActive) elActive.innerText = active.length;
-  if (elOverdue) elOverdue.innerText = overdue.length;
-  if (elSoon) elSoon.innerText = dueSoon.length;
-  if (elStaff) elStaff.innerText = staffCount;
-  if (elCheckins) elCheckins.innerText = todayCheckins;
-}
-
-function getUrgencyLabel(deadline) {
-  if (!deadline) return '';
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const due = new Date(deadline); due.setHours(0, 0, 0, 0);
-  const diff = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
-  if (diff < 0) return '<span class="urgency-overdue">⚠ ' + Math.abs(diff) + 'd overdue</span>';
-  if (diff === 0) return '<span class="urgency-overdue">⚠ Due today</span>';
-  if (diff <= 3) return '<span class="urgency-soon">⏳ ' + diff + 'd left</span>';
-  return '<span class="urgency-ok">✓ ' + diff + 'd left</span>';
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+  set('statActiveProjects', active.length);
+  set('statOverdue', overdue.length);
+  set('statDueSoon', dueSoon.length);
+  set('statStaffCount', staffCount);
+  set('statTodayCheckins', todayCheckins);
 }
 
 function generateProjectDashboard() {
@@ -538,37 +511,8 @@ function saveProjectProfile() {
   triggerNotificationToast('Project profile saved.');
 }
 
-function archiveProject(projectId) {
-  const p = projects.find(x => x.id === projectId);
-  if (!p) return;
-  p.archived = true;
-  flushStateToDisk();
-  rebuildApplicationDOMViews();
-  triggerNotificationToast('Project archived.');
-}
-
-function deleteProject(projectId) {
-  if (!confirm('Delete this project?')) return;
-  projects = projects.filter(x => x.id !== projectId);
-  flushStateToDisk();
-  rebuildApplicationDOMViews();
-  triggerNotificationToast('Project deleted.');
-}
-
-function requestArchiveProject(projectId) {
-  const p = projects.find(x => x.id === projectId);
-  if (!p) return;
-  archiveRequests.push({
-    id: Date.now(), projectId: projectId, projectTitle: p.title,
-    requester: currentUser.name, timestamp: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), status: 'PENDING'
-  });
-  flushStateToDisk();
-  rebuildApplicationDOMViews();
-  triggerNotificationToast('Archive request submitted.');
-}
-
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 10: ANNOUNCEMENTS & STAFF
+//  SECTION 10: ANNOUNCEMENTS
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateAnnouncementsStream() {
@@ -577,14 +521,21 @@ function generateAnnouncementsStream() {
   container.innerHTML = '';
 
   const reversed = [...announcements].reverse();
+  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+
   reversed.forEach(ann => {
     const isPingedToMe = currentUser && ann.target === currentUser.name;
     const isBroadcastAll = ann.target === 'ALL';
-    if (!isBroadcastAll && !isPingedToMe && currentUser.role !== 'ADMIN') return;
+    const isMine = currentUser && ann.sender === currentUser.name;
+    if (!isBroadcastAll && !isPingedToMe && !isAdmin) return;
+
+    // Only the sender or an admin can delete
+    const canDelete = isAdmin || isMine;
 
     const node = document.createElement('div');
     node.className = 'announcement-node' + (isPingedToMe ? ' pinged' : '');
     node.innerHTML =
+      (canDelete ? '<button class="announcement-delete-btn" title="Delete" data-ann-id="' + ann.id + '">✕</button>' : '') +
       '<div class="announcement-meta"><span class="announcement-badge-alert">' + (isBroadcastAll ? 'NEWS FLASH' : 'DIRECT PING') + '</span><span>By <b>' + ann.sender + '</b></span><span>•</span><span>' + ann.timestamp + '</span></div>' +
       '<div class="announcement-body">' + ann.text + '</div>';
     container.appendChild(node);
@@ -593,6 +544,39 @@ function generateAnnouncementsStream() {
   if (container.children.length === 0) {
     container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:1rem;">No announcements.</div>';
   }
+
+  // Wire delete buttons
+  container.querySelectorAll('[data-ann-id]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteAnnouncement(btn.dataset.annId);
+    });
+  });
+}
+
+async function deleteAnnouncement(annId) {
+  if (!confirm('Delete this announcement?')) return;
+
+  const target = announcements.find(a => String(a.id) === String(annId));
+  if (!target) return;
+
+  // Remote-backed ping → delete from Supabase
+  if (String(annId).startsWith('remote-') && supabaseClient) {
+    const remoteId = parseInt(String(annId).replace('remote-', ''), 10);
+    try {
+      const { error } = await supabaseClient.from('pings').delete().eq('id', remoteId);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Delete ping failed:', err);
+      triggerNotificationToast('Failed to delete from backend.');
+      return;
+    }
+  }
+
+  announcements = announcements.filter(a => String(a.id) !== String(annId));
+  flushStateToDisk();
+  generateAnnouncementsStream();
+  triggerNotificationToast('Announcement deleted.');
 }
 
 function generateStaffDirectory() {
@@ -615,7 +599,7 @@ function generateStaffDirectory() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 11: BEATS & ASSIGNMENTS
+//  SECTION 11: BEATS
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateBeatsGrid() {
@@ -623,44 +607,112 @@ function generateBeatsGrid() {
   if (!container) return;
   container.innerHTML = '';
 
-  if (beats.length === 0) {
+  const visible = beats.filter(b => !b.archived);
+  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+
+  if (visible.length === 0) {
     container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No beats configured yet.</div>';
     return;
   }
 
-  beats.forEach(b => {
+  visible.forEach(b => {
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML =
       '<span class="priority-flag priority-' + b.priority + '">' + b.priority + '</span>' +
       '<div class="card-title">' + b.name + '</div>' +
-      '<div style="font-size:0.85rem;color:var(--text-muted);">Reporter: <b>' + b.reporter + '</b></div>';
+      '<div style="font-size:0.85rem;color:var(--text-muted);">Reporter: <b>' + b.reporter + '</b></div>' +
+      (isAdmin
+        ? '<div class="card-action-row"><button class="card-action-btn archive-btn" data-beat-id="' + b.id + '">🗄 Archive</button></div>'
+        : '');
     container.appendChild(card);
   });
+
+  container.querySelectorAll('[data-beat-id]').forEach(btn => {
+    btn.addEventListener('click', () => archiveBeat(parseInt(btn.dataset.beatId)));
+  });
 }
+
+async function archiveBeat(beatId) {
+  if (!confirm('Archive this beat? It will be hidden from the grid.')) return;
+  const b = beats.find(x => x.id === beatId);
+  if (!b) return;
+
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient.from('beats').update({ archived: true }).eq('id', beatId);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Archive beat failed:', err);
+      triggerNotificationToast('Backend error: ' + err.message);
+      return;
+    }
+  }
+
+  b.archived = true;
+  flushStateToDisk();
+  generateBeatsGrid();
+  triggerNotificationToast('Beat archived.');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 12: ASSIGNMENTS
+// ═══════════════════════════════════════════════════════════════════════
 
 function generateAssignmentsGrid() {
   const container = document.getElementById('assignmentsGrid');
   if (!container) return;
   container.innerHTML = '';
 
-  if (assignments.length === 0) {
+  const visible = assignments.filter(a => !a.archived);
+  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+
+  if (visible.length === 0) {
     container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No assignments yet.</div>';
     return;
   }
 
-  assignments.forEach(a => {
+  visible.forEach(a => {
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML =
       '<div class="card-title" style="font-size:1.05rem;">' + a.title + '</div>' +
-      '<div style="font-size:0.85rem;color:var(--text-muted);">Assignee: <b>' + a.assignee + '</b></div>';
+      '<div style="font-size:0.85rem;color:var(--text-muted);">Assignee: <b>' + a.assignee + '</b></div>' +
+      (isAdmin
+        ? '<div class="card-action-row"><button class="card-action-btn archive-btn" data-asg-id="' + a.id + '">🗄 Archive</button></div>'
+        : '');
     container.appendChild(card);
+  });
+
+  container.querySelectorAll('[data-asg-id]').forEach(btn => {
+    btn.addEventListener('click', () => archiveAssignment(parseInt(btn.dataset.asgId)));
   });
 }
 
+async function archiveAssignment(asgId) {
+  if (!confirm('Archive this assignment?')) return;
+  const a = assignments.find(x => x.id === asgId);
+  if (!a) return;
+
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient.from('assignments').update({ archived: true }).eq('id', asgId);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Archive assignment failed:', err);
+      triggerNotificationToast('Backend error: ' + err.message);
+      return;
+    }
+  }
+
+  a.archived = true;
+  flushStateToDisk();
+  generateAssignmentsGrid();
+  triggerNotificationToast('Assignment archived.');
+}
+
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 12: EVENTS & CALENDAR
+//  SECTION 13: EVENTS & CALENDAR
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateEventsTrackerChecklist() {
@@ -716,7 +768,7 @@ function generateDeadlineCalendarGrid() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 13: ATTENDANCE & GEO-TRACKING
+//  SECTION 14: ATTENDANCE
 // ═══════════════════════════════════════════════════════════════════════
 
 function saveAttendanceLogs() {
@@ -796,9 +848,7 @@ async function reverseGeocodeLabel(lat, lon) {
     const data = await res.json();
     const a = data.address || {};
     return a.suburb || a.village || a.town || a.city || a.county || a.state || 'Unknown Location';
-  } catch {
-    return 'Location unavailable';
-  }
+  } catch { return 'Location unavailable'; }
 }
 
 function processFieldTelemetryMarking() {
@@ -833,7 +883,7 @@ function processFieldTelemetryMarking() {
       id: Date.now(), reporter: currentUser.name, role: currentUser.role,
       date: now.toLocaleDateString('en-CA'), time: now.toLocaleTimeString('en-US', { hour12: true }),
       lat: lat.toFixed(6), lon: lon.toFixed(6), accuracy: Math.round(accuracy),
-      location: locationLabel, note: note, timestamp: now.toISOString()
+      location: locationLabel, note, timestamp: now.toISOString()
     };
 
     attendanceLogs.unshift(entry);
@@ -861,8 +911,34 @@ function initAttendancePage() {
   }
 }
 
+async function clearAttendanceLog() {
+  if (currentUser.role !== 'ADMIN') {
+    triggerNotificationToast('Admin clearance required.');
+    return;
+  }
+  if (!confirm('Permanently clear ALL attendance records? This cannot be undone.')) return;
+
+  if (supabaseClient) {
+    try {
+      // Delete all rows: use a filter that's always true
+      const { error } = await supabaseClient.from('attendance').delete().neq('id', -1);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Clear attendance failed:', err);
+      triggerNotificationToast('Backend error: ' + err.message);
+      return;
+    }
+  }
+
+  attendanceLogs = [];
+  saveAttendanceLogs();
+  renderAttendanceTable();
+  updateAttendanceStats();
+  triggerNotificationToast('Attendance log cleared.');
+}
+
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 14: ARCHIVES & REPORTS
+//  SECTION 15: ARCHIVES & REPORTS
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateArchiveGrid() {
@@ -949,7 +1025,7 @@ function generateActivitySummaryReport() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 15: SOURCE VAULT
+//  SECTION 16: SOURCES
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateSourcesGrid() {
@@ -979,7 +1055,7 @@ function generateSourcesGrid() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 16: USER MANAGEMENT (ADMIN)
+//  SECTION 17: USER MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateUsersTable() {
@@ -993,6 +1069,7 @@ function generateUsersTable() {
   }
 
   registeredUsersDB.forEach(user => {
+    const isSelf = currentUser && currentUser.name === user.name;
     const tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
     tr.innerHTML =
@@ -1000,8 +1077,16 @@ function generateUsersTable() {
       '<td style="padding:0.9rem 1.25rem;font-weight:600;">' + user.name + '</td>' +
       '<td style="padding:0.9rem 1.25rem;">' + user.role + '</td>' +
       '<td style="padding:0.9rem 1.25rem;color:var(--text-muted);">' + (user.created || '—') + '</td>' +
-      '<td style="padding:0.9rem 1.25rem;text-align:right;">—</td>';
+      '<td style="padding:0.9rem 1.25rem;text-align:right;">' +
+        (isSelf
+          ? '<span style="color:var(--text-muted);font-size:0.72rem;">(You)</span>'
+          : '<button class="user-row-delete-btn" data-uid="' + user.id + '" data-uname="' + user.name + '">🗑 Delete</button>') +
+      '</td>';
     tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll('[data-uid]').forEach(btn => {
+    btn.addEventListener('click', () => deleteUserFromAdmin(parseInt(btn.dataset.uid), btn.dataset.uname));
   });
 }
 
@@ -1018,39 +1103,121 @@ async function createNewUser() {
   const parts = name.split(' ');
   const code = parts.length > 1 ? (parts[0][0] + parts[1][0]).toUpperCase() : name.substring(0, 2).toUpperCase();
 
-  // Try backend first
-  if (supabaseClient) {
-    try {
-      const { error } = await supabaseClient.from('users').insert({ name, pass, role, code });
-      if (error) {
-        if (error.code === '23505') {
-          triggerNotificationToast('Username already exists.');
-        } else {
-          triggerNotificationToast('Backend error: ' + error.message);
-        }
-        return;
-      }
-    } catch (err) {
-      console.error('Create user failed:', err);
-      triggerNotificationToast('Failed to reach backend.');
-      return;
-    }
+  if (!supabaseClient) {
+    triggerNotificationToast('Backend unavailable.');
+    return;
   }
 
-  // Also update local cache
-  registeredUsersDB.push({
-    name: name, pass: pass, role: role, code: code,
-    created: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  });
-  flushStateToDisk();
+  try {
+    const { error } = await supabaseClient.rpc('create_user', {
+      p_name: name, p_pass: pass, p_role: role, p_code: code
+    });
+    if (error) {
+      if (error.message && error.message.includes('duplicate')) {
+        triggerNotificationToast('Username already exists.');
+      } else {
+        triggerNotificationToast('Error: ' + error.message);
+      }
+      return;
+    }
+  } catch (err) {
+    console.error('Create user failed:', err);
+    triggerNotificationToast('Failed to reach backend.');
+    return;
+  }
+
+  // Refresh from backend
+  await syncAllDataFromSupabase();
   generateUsersTable();
   generateStaffDirectory();
+
   document.getElementById('addUserModal').classList.remove('active');
+  document.getElementById('newUserName').value = '';
+  document.getElementById('newUserPass').value = '';
   triggerNotificationToast('Account "' + name + '" created.');
 }
 
+async function deleteUserFromAdmin(userId, userName) {
+  if (currentUser && currentUser.name === userName) {
+    triggerNotificationToast('You cannot delete your own account.');
+    return;
+  }
+  if (!confirm('Permanently delete "' + userName + '"? This cannot be undone.')) return;
+
+  if (!supabaseClient) {
+    triggerNotificationToast('Backend unavailable.');
+    return;
+  }
+
+  try {
+    const { error } = await supabaseClient.rpc('delete_user', { p_id: userId });
+    if (error) throw error;
+  } catch (err) {
+    console.error('Delete user failed:', err);
+    triggerNotificationToast('Delete failed: ' + err.message);
+    return;
+  }
+
+  registeredUsersDB = registeredUsersDB.filter(u => u.id !== userId);
+  flushStateToDisk();
+  generateUsersTable();
+  generateStaffDirectory();
+  triggerNotificationToast('User "' + userName + '" deleted.');
+}
+
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 17: NOTIFICATION BAR
+//  SECTION 18: CSV EXPORT
+// ═══════════════════════════════════════════════════════════════════════
+
+function downloadCSV(filename, rows) {
+  const csv = rows.map(r => r.map(cell => {
+    const s = String(cell == null ? '' : cell);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(',')).join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportProjectsCSV() {
+  const visible = projects.filter(p => !p.archived);
+  if (visible.length === 0) {
+    triggerNotificationToast('No projects to export.');
+    return;
+  }
+
+  const rows = [['ID','Title','Category','Deadline','Status','Priority','Progress','Reporter','Tags','Notes']];
+  visible.forEach(p => rows.push([
+    p.id, p.title, p.category, p.deadline, p.status, p.priority,
+    (p.progress || 0) + '%', p.reporter || '', p.tags || '', p.notes || ''
+  ]));
+
+  downloadCSV('jcompass-projects-' + new Date().toISOString().split('T')[0] + '.csv', rows);
+  triggerNotificationToast('Exported ' + visible.length + ' projects.');
+}
+
+function exportAttendanceCSV() {
+  if (attendanceLogs.length === 0) {
+    triggerNotificationToast('No attendance data.');
+    return;
+  }
+  const rows = [['Reporter','Role','Date','Time','Latitude','Longitude','Accuracy','Location','Note']];
+  attendanceLogs.forEach(l => rows.push([
+    l.reporter, l.role, l.date, l.time, l.lat, l.lon, l.accuracy, l.location, l.note || ''
+  ]));
+  downloadCSV('jcompass-attendance-' + new Date().toISOString().split('T')[0] + '.csv', rows);
+  triggerNotificationToast('Exported ' + attendanceLogs.length + ' records.');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 19: NOTIFICATION BAR
 // ═══════════════════════════════════════════════════════════════════════
 
 function dismissNotice(noticeId) {
@@ -1092,21 +1259,18 @@ function generateNotificationBar() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 18: APPLICATION INITIALIZATION
+//  SECTION 20: INITIALIZATION
 // ═══════════════════════════════════════════════════════════════════════
 
 function initializeApp() {
-  // ── Supabase ───────────────────────────────────────────────────────
   initSupabaseClient();
 
-  // ── Theme ──────────────────────────────────────────────────────────
   const savedTheme = localStorage.getItem('jcompass_theme') || 'forest';
   document.body.setAttribute('data-theme-profile', savedTheme);
 
-  // ── Session + initial render ───────────────────────────────────────
   enforceSessionGuard();
 
-  // ── Navigation ─────────────────────────────────────────────────────
+  // Navigation
   document.querySelectorAll('.nav-item').forEach(nav => {
     nav.addEventListener('click', () => {
       document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -1116,36 +1280,26 @@ function initializeApp() {
       const pageEl = document.getElementById('page-' + targetPage);
       if (pageEl) pageEl.classList.add('active');
       const breadcrumb = document.getElementById('breadcrumbCurrent');
-      if (breadcrumb && nav.querySelector('.nav-label')) {
-        breadcrumb.innerText = nav.querySelector('.nav-label').innerText;
-      }
+      if (breadcrumb && nav.querySelector('.nav-label')) breadcrumb.innerText = nav.querySelector('.nav-label').innerText;
       if (targetPage === 'attend') initAttendancePage();
       if (targetPage === 'calendar') generateDeadlineCalendarGrid();
     });
   });
 
-  // ── Sidebar toggle ─────────────────────────────────────────────────
+  // Sidebar
   const sidebarEl = document.getElementById('sidebar');
   const menuToggle = document.getElementById('menuToggle');
-  if (menuToggle && sidebarEl) {
-    menuToggle.addEventListener('click', () => sidebarEl.classList.toggle('active'));
-  }
+  if (menuToggle && sidebarEl) menuToggle.addEventListener('click', () => sidebarEl.classList.toggle('active'));
 
-  // ── Sidebar close button ───────────────────────────────────────────
   const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
-  if (sidebarCloseBtn && sidebarEl) {
-    sidebarCloseBtn.addEventListener('click', () => sidebarEl.classList.remove('active'));
-  }
+  if (sidebarCloseBtn && sidebarEl) sidebarCloseBtn.addEventListener('click', () => sidebarEl.classList.remove('active'));
 
-  // Auto-close sidebar after picking a page on tablet/mobile
   document.addEventListener('click', (e) => {
     if (window.innerWidth > 992 || !sidebarEl || !sidebarEl.classList.contains('active')) return;
-    const navItem = e.target.closest('.nav-item');
-    if (!navItem) return;
+    if (!e.target.closest('.nav-item')) return;
     sidebarEl.classList.remove('active');
   });
 
-  // Close sidebar on Escape
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && sidebarEl) sidebarEl.classList.remove('active');
   });
@@ -1154,7 +1308,7 @@ function initializeApp() {
     if (window.innerWidth > 992 && sidebarEl) sidebarEl.classList.remove('active');
   });
 
-  // ── Sign Out ───────────────────────────────────────────────────────
+  // Sign out
   const signOutBtn = document.getElementById('signOutBtn');
   if (signOutBtn) {
     signOutBtn.addEventListener('click', () => {
@@ -1166,7 +1320,7 @@ function initializeApp() {
     });
   }
 
-  // ── Announcements ──────────────────────────────────────────────────
+  // Announcements
   const announceBtn = document.getElementById('submitAnnouncementBtn');
   if (announceBtn) {
     announceBtn.addEventListener('click', () => {
@@ -1179,11 +1333,21 @@ function initializeApp() {
     });
   }
 
-  // ── Attendance ─────────────────────────────────────────────────────
+  // Attendance
   const attendanceBtn = document.getElementById('markAttendanceBtn');
   if (attendanceBtn) attendanceBtn.addEventListener('click', processFieldTelemetryMarking);
 
-  // ── Create Project ─────────────────────────────────────────────────
+  const clearAttBtn = document.getElementById('clearAttendanceBtn');
+  if (clearAttBtn) clearAttBtn.addEventListener('click', clearAttendanceLog);
+
+  const exportAttBtn = document.getElementById('exportAttendanceBtn');
+  if (exportAttBtn) exportAttBtn.addEventListener('click', exportAttendanceCSV);
+
+  // Export projects CSV
+  const exportProjBtn = document.getElementById('quickExportCSVBtn');
+  if (exportProjBtn) exportProjBtn.addEventListener('click', exportProjectsCSV);
+
+  // Create project
   const createProjectBtn = document.getElementById('createProjectBtn');
   if (createProjectBtn) {
     createProjectBtn.addEventListener('click', () => {
@@ -1192,22 +1356,24 @@ function initializeApp() {
       const deadline = document.getElementById('newDeadline').value || new Date().toISOString().split('T')[0];
       if (!title) return;
       projects.push({
-        id: Date.now(), title: title, category: category, deadline: deadline,
-        status: 'ACTIVE', priority: 'MEDIUM', progress: 0, reporter: currentUser ? currentUser.name : '',
+        id: Date.now(), title, category, deadline,
+        status: 'ACTIVE', priority: 'MEDIUM', progress: 0,
+        reporter: currentUser ? currentUser.name : '',
         notes: '', tags: '', archived: false
       });
       flushStateToDisk();
       rebuildApplicationDOMViews();
       document.getElementById('newProjectModal').classList.remove('active');
       document.getElementById('newTitle').value = '';
+      triggerNotificationToast('Project created.');
     });
   }
 
-  // ── Save User ──────────────────────────────────────────────────────
+  // Save user
   const saveUserBtn = document.getElementById('saveUserBtn');
   if (saveUserBtn) saveUserBtn.addEventListener('click', createNewUser);
 
-  // ── Save Source ────────────────────────────────────────────────────
+  // Save source
   const saveSourceBtn = document.getElementById('saveSourceBtn');
   if (saveSourceBtn) {
     saveSourceBtn.addEventListener('click', () => {
@@ -1218,27 +1384,28 @@ function initializeApp() {
       const notes = document.getElementById('sourceNotes').value.trim();
       if (!name) return;
       sources.push({
-        id: Date.now(), name: name, beat: beat, contact: contact,
-        reliability: reliability, notes: notes, createdBy: currentUser ? currentUser.name : 'Unknown'
+        id: Date.now(), name, beat, contact, reliability, notes,
+        createdBy: currentUser ? currentUser.name : 'Unknown'
       });
       flushStateToDisk();
       generateSourcesGrid();
       document.getElementById('addSourceModal').classList.remove('active');
+      triggerNotificationToast('Source added.');
     });
   }
 
-  // ── Notifications ──────────────────────────────────────────────────
+  // Notifications
   refreshNotificationPermissionUI();
   const notifyBtn = document.getElementById('enableNotificationsBtn');
   if (notifyBtn) notifyBtn.addEventListener('click', requestNotificationPermission);
 
-  // ── Calendar Navigation ────────────────────────────────────────────
+  // Calendar nav
   const prevBtn = document.getElementById('calPrevMonth');
   const nextBtn = document.getElementById('calNextMonth');
   if (prevBtn) prevBtn.addEventListener('click', () => { calendarMonth--; if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; } generateDeadlineCalendarGrid(); });
   if (nextBtn) nextBtn.addEventListener('click', () => { calendarMonth++; if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; } generateDeadlineCalendarGrid(); });
 
-  // ── Search Inputs ──────────────────────────────────────────────────
+  // Search
   const searchInput = document.getElementById('dashboardSearchInput');
   if (searchInput) searchInput.addEventListener('input', (e) => { searchQuery = e.target.value; generateProjectDashboard(); });
 
@@ -1248,15 +1415,15 @@ function initializeApp() {
   const attSearch = document.getElementById('attendanceSearchInput');
   if (attSearch) attSearch.addEventListener('input', (e) => { attendanceSearchQuery = e.target.value; renderAttendanceTable(); });
 
-  // ── Activity Summary ───────────────────────────────────────────────
+  // Activity summary
   const genSummaryBtn = document.getElementById('generateActivitySummaryBtn');
   if (genSummaryBtn) genSummaryBtn.addEventListener('click', generateActivitySummaryReport);
 
-  // ── Save Profile ───────────────────────────────────────────────────
+  // Save project profile
   const saveProfileBtn = document.getElementById('profileSaveBtn');
   if (saveProfileBtn) saveProfileBtn.addEventListener('click', saveProjectProfile);
 
-  // ── Modal Close Buttons ────────────────────────────────────────────
+  // Modal close
   document.querySelectorAll('[data-close]').forEach(btn => {
     btn.addEventListener('click', () => {
       const modalId = btn.getAttribute('data-close');
@@ -1265,7 +1432,7 @@ function initializeApp() {
     });
   });
 
-  // ── Modal Open Buttons ─────────────────────────────────────────────
+  // Modal open
   const modalButtons = [
     { btnId: 'fabBtn', modalId: 'newProjectModal' },
     { btnId: 'addCalendarProjectBtn', modalId: 'newProjectModal' },
@@ -1285,50 +1452,90 @@ function initializeApp() {
     });
   });
 
-  // ── Save Beat ──────────────────────────────────────────────────────
+  // Save beat
   const saveBeatBtn = document.getElementById('saveBeatBtn');
   if (saveBeatBtn) {
-    saveBeatBtn.addEventListener('click', () => {
+    saveBeatBtn.addEventListener('click', async () => {
       const name = document.getElementById('beatName').value.trim();
       const reporter = document.getElementById('beatReporter').value.trim() || (currentUser ? currentUser.name : 'Reporter');
       const priority = document.getElementById('beatPriority').value;
       if (!name) return;
-      beats.push({ id: Date.now(), name: name, reporter: reporter, priority: priority, imgData: '' });
+
+      let newId = Date.now();
+      if (supabaseClient) {
+        try {
+          const { data, error } = await supabaseClient.from('beats').insert({
+            name, reporter, priority, img_data: ''
+          }).select().single();
+          if (error) throw error;
+          if (data) newId = data.id;
+        } catch (err) {
+          console.error('Save beat failed:', err);
+          triggerNotificationToast('Backend error: ' + err.message);
+          return;
+        }
+      }
+
+      beats.push({ id: newId, name, reporter, priority, imgData: '', archived: false });
       flushStateToDisk();
       generateBeatsGrid();
       document.getElementById('addBeatModal').classList.remove('active');
+      document.getElementById('beatName').value = '';
+      document.getElementById('beatReporter').value = '';
+      triggerNotificationToast('Beat created.');
     });
   }
 
-  // ── Save Assignment ────────────────────────────────────────────────
+  // Save assignment
   const saveAssignmentBtn = document.getElementById('saveAssignmentBtn');
   if (saveAssignmentBtn) {
-    saveAssignmentBtn.addEventListener('click', () => {
+    saveAssignmentBtn.addEventListener('click', async () => {
       const title = document.getElementById('asgTitle').value.trim();
       const assignee = document.getElementById('asgAssignee').value.trim() || 'General Desk';
       if (!title) return;
-      assignments.push({ id: Date.now(), title: title, assignee: assignee });
+
+      let newId = Date.now();
+      if (supabaseClient) {
+        try {
+          const { data, error } = await supabaseClient.from('assignments').insert({
+            title, assignee
+          }).select().single();
+          if (error) throw error;
+          if (data) newId = data.id;
+        } catch (err) {
+          console.error('Save assignment failed:', err);
+          triggerNotificationToast('Backend error: ' + err.message);
+          return;
+        }
+      }
+
+      assignments.push({ id: newId, title, assignee, archived: false });
       flushStateToDisk();
       generateAssignmentsGrid();
       document.getElementById('addAssignmentModal').classList.remove('active');
+      document.getElementById('asgTitle').value = '';
+      document.getElementById('asgAssignee').value = '';
+      triggerNotificationToast('Assignment created.');
     });
   }
 
-  // ── Save Event ─────────────────────────────────────────────────────
+  // Save event
   const saveEventBtn = document.getElementById('saveEventBtn');
   if (saveEventBtn) {
     saveEventBtn.addEventListener('click', () => {
       const name = document.getElementById('evtName').value.trim();
       const date = document.getElementById('evtDate').value || new Date().toISOString().split('T')[0];
       if (!name) return;
-      events.push({ id: Date.now(), name: name, date: date, completed: false });
+      events.push({ id: Date.now(), name, date, completed: false });
       flushStateToDisk();
       generateEventsTrackerChecklist();
       document.getElementById('addEventModal').classList.remove('active');
+      document.getElementById('evtName').value = '';
+      triggerNotificationToast('Event added.');
     });
   }
 
-  // ── Save Name ──────────────────────────────────────────────────────
+  // Save name
   const saveNameBtn = document.getElementById('saveNameBtn');
   if (saveNameBtn) {
     saveNameBtn.addEventListener('click', () => {
@@ -1351,7 +1558,7 @@ function initializeApp() {
     });
   }
 
-  // ── Theme Buttons ──────────────────────────────────────────────────
+  // Theme
   document.querySelectorAll('.theme-chip-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.theme-chip-btn').forEach(c => c.classList.remove('active'));
@@ -1362,63 +1569,41 @@ function initializeApp() {
     });
   });
 
-  // ── Export CSV ─────────────────────────────────────────────────────
-  const exportBtn = document.getElementById('exportAttendanceBtn');
-  if (exportBtn) {
-    exportBtn.addEventListener('click', () => {
-      if (attendanceLogs.length === 0) { triggerNotificationToast('No attendance data.'); return; }
-      const csv = ['Reporter,Role,Date,Time,Lat,Lon,Accuracy,Location,Note'].concat(
-        attendanceLogs.map(l => [l.reporter, l.role, l.date, l.time, l.lat, l.lon, l.accuracy, l.location, l.note].join(','))
-      ).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'attendance.csv';
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-  }
-
-  console.log('✅ JCompass initialized successfully');
+  console.log('✅ JCompass initialized');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 19: SETTINGS / CONTROL TRAY WIRING
+//  SECTION 21: CONTROL TRAY
 // ═══════════════════════════════════════════════════════════════════════
 
 (function wireControlTray() {
   function openTray() {
     const tray = document.getElementById('controlTray');
-    const trayOverlay = document.getElementById('controlTrayOverlay');
+    const ov = document.getElementById('controlTrayOverlay');
     if (tray) tray.classList.add('active');
-    if (trayOverlay) trayOverlay.classList.add('active');
+    if (ov) ov.classList.add('active');
   }
   function closeTray() {
     const tray = document.getElementById('controlTray');
-    const trayOverlay = document.getElementById('controlTrayOverlay');
+    const ov = document.getElementById('controlTrayOverlay');
     if (tray) tray.classList.remove('active');
-    if (trayOverlay) trayOverlay.classList.remove('active');
+    if (ov) ov.classList.remove('active');
   }
 
   const gearBtn = document.getElementById('settingsGearBtn');
   if (gearBtn) gearBtn.addEventListener('click', openTray);
-
   const sideBtn = document.getElementById('settingsSidebarBtn');
   if (sideBtn) sideBtn.addEventListener('click', openTray);
-
   const userChip = document.getElementById('userAvatarBtn');
   if (userChip) userChip.addEventListener('click', openTray);
-
   const trayClose = document.getElementById('controlTrayCloseBtn');
   if (trayClose) trayClose.addEventListener('click', closeTray);
-
-  const trayOverlay = document.getElementById('controlTrayOverlay');
-  if (trayOverlay) trayOverlay.addEventListener('click', closeTray);
+  const trayOv = document.getElementById('controlTrayOverlay');
+  if (trayOv) trayOv.addEventListener('click', closeTray);
 })();
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 20: ONESIGNAL PUSH NOTIFICATIONS
+//  SECTION 22: ONESIGNAL
 // ═══════════════════════════════════════════════════════════════════════
 
 const ONESIGNAL_APP_ID = 'e76cbe01-1a76-4f3d-a45d-9d155a126093';
@@ -1435,25 +1620,17 @@ async function sendPushNotification(title, message, targetUserName = null) {
       chrome_web_icon: 'https://cdn-icons-png.flaticon.com/512/148/148813.png',
       chrome_web_badge: 'https://cdn-icons-png.flaticon.com/512/148/148813.png',
     };
-
     if (targetUserName) {
       notificationData.include_external_user_ids = [targetUserName];
     } else {
       notificationData.included_segments = ['Subscribed Users'];
     }
-
     const response = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Key ' + ONESIGNAL_API_KEY
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Key ' + ONESIGNAL_API_KEY },
       body: JSON.stringify(notificationData)
     });
-
-    const result = await response.json();
-    console.log('Push notification sent:', result);
-    return result;
+    return await response.json();
   } catch (err) {
     console.error('Push notification failed:', err);
   }
@@ -1461,17 +1638,12 @@ async function sendPushNotification(title, message, targetUserName = null) {
 
 async function setOneSignalUser(userName) {
   if (window.OneSignal) {
-    try {
-      await window.OneSignal.login(userName);
-      console.log('OneSignal user set:', userName);
-    } catch (err) {
-      console.error('OneSignal login failed:', err);
-    }
+    try { await window.OneSignal.login(userName); } catch (err) {}
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 21: BOOTSTRAP
+//  SECTION 23: BOOTSTRAP
 // ═══════════════════════════════════════════════════════════════════════
 
 if (document.readyState === 'loading') {
