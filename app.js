@@ -1,6 +1,6 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v2.3                                          ║
+ * ║  JOURNALIST'S COMPASS v2.4                                          ║
  * ║  Supabase is the SINGLE source of truth.                            ║
  * ║  Local storage = disposable read cache only.                        ║
  * ╚══════════════════════════════════════════════════════════════════════╝
@@ -589,7 +589,6 @@ function openProjectProfile(projectId) {
   document.getElementById('profileTags').value = p.tags || '';
   document.getElementById('profileStatusSelect').value = p.status || 'ACTIVE';
 
-  // Highlight current priority button
   document.querySelectorAll('.priority-select-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.priority === (p.priority || 'MEDIUM'));
   });
@@ -617,7 +616,6 @@ function applyProfilePermissions(p) {
     if (el) el.disabled = !isAdmin;
   });
 
-  // Priority buttons: read-only for staff
   document.querySelectorAll('.priority-select-btn').forEach(btn => {
     btn.disabled = !isAdmin;
     btn.style.cursor = isAdmin ? 'pointer' : 'not-allowed';
@@ -1334,7 +1332,7 @@ async function clearAttendanceLog() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 16: ARCHIVE GRID
+//  SECTION 16: ARCHIVE GRID (with restore + delete per card)
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateArchiveGrid() {
@@ -1345,6 +1343,8 @@ function generateArchiveGrid() {
 
   const archived = projects.filter(p => p.archived);
   if (countBadge) countBadge.innerText = archived.length + ' archived';
+
+  const isAdmin = currentUser && currentUser.role === 'ADMIN';
 
   if (archived.length === 0) {
     container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No archived projects.</div>';
@@ -1357,13 +1357,122 @@ function generateArchiveGrid() {
     card.innerHTML =
       '<div class="card-category">' + (p.category || '') + '</div>' +
       '<div class="card-title">' + p.title + '</div>' +
-      '<div class="card-meta"><span>📅 ' + (p.deadline || '—') + '</span><span>' + (p.status || '') + '</span></div>';
+      '<div class="card-meta"><span>📅 ' + (p.deadline || '—') + '</span><span>' + (p.status || '') + '</span></div>' +
+      (isAdmin
+        ? '<div class="card-action-row">' +
+            '<button class="card-action-btn restore-btn" data-archive-restore="' + p.id + '">↩ Restore</button>' +
+            '<button class="card-action-btn delete-btn" data-archive-delete="' + p.id + '">🗑 Delete</button>' +
+          '</div>'
+        : '');
     container.appendChild(card);
+  });
+
+  container.querySelectorAll('[data-archive-restore]').forEach(btn => {
+    btn.addEventListener('click', () => restoreArchivedProject(parseInt(btn.dataset.archiveRestore)));
+  });
+
+  container.querySelectorAll('[data-archive-delete]').forEach(btn => {
+    btn.addEventListener('click', () => deleteArchivedProject(parseInt(btn.dataset.archiveDelete)));
   });
 }
 
+async function restoreArchivedProject(projectId) {
+  if (!currentUser || currentUser.role !== 'ADMIN') {
+    triggerNotificationToast('Admin clearance required.');
+    return;
+  }
+  const p = projects.find(x => x.id === projectId);
+  if (!p) { triggerNotificationToast('Project not found.'); return; }
+
+  if (!confirm('Restore "' + p.title + '" back to the active dashboard?')) return;
+
+  if (supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('projects')
+        .update({ archived: false })
+        .eq('id', projectId)
+        .select();
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Update blocked by Supabase (check RLS policy on projects).');
+    } catch (err) {
+      triggerNotificationToast('Restore failed: ' + err.message);
+      return;
+    }
+  }
+
+  p.archived = false;
+  flushCachedCollections();
+  rebuildApplicationDOMViews();
+  triggerNotificationToast('✓ Project restored to dashboard.');
+}
+
+async function deleteArchivedProject(projectId) {
+  if (!currentUser || currentUser.role !== 'ADMIN') {
+    triggerNotificationToast('Admin clearance required.');
+    return;
+  }
+  const p = projects.find(x => x.id === projectId);
+  if (!p) { triggerNotificationToast('Project not found.'); return; }
+
+  if (!confirm('Permanently delete "' + p.title + '"? This cannot be undone.')) return;
+
+  if (supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('projects')
+        .delete()
+        .eq('id', projectId)
+        .select();
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Delete blocked by Supabase (check RLS policy on projects).');
+    } catch (err) {
+      triggerNotificationToast('Delete failed: ' + err.message);
+      return;
+    }
+  }
+
+  projects = projects.filter(x => x.id !== projectId);
+  flushCachedCollections();
+  rebuildApplicationDOMViews();
+  triggerNotificationToast('✓ Archived project deleted.');
+}
+
+async function clearAllArchivedProjects() {
+  if (!currentUser || currentUser.role !== 'ADMIN') {
+    triggerNotificationToast('Admin clearance required.');
+    return;
+  }
+  const archived = projects.filter(p => p.archived);
+  if (archived.length === 0) {
+    triggerNotificationToast('No archived projects to clear.');
+    return;
+  }
+
+  if (!confirm('Permanently delete ALL ' + archived.length + ' archived project(s)? This cannot be undone.')) return;
+  if (!confirm('Are you absolutely sure? This removes them from Supabase permanently.')) return;
+
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient
+        .from('projects')
+        .delete()
+        .eq('archived', true);
+      if (error) throw error;
+    } catch (err) {
+      triggerNotificationToast('Backend error: ' + err.message);
+      return;
+    }
+  }
+
+  projects = projects.filter(p => !p.archived);
+  flushCachedCollections();
+  rebuildApplicationDOMViews();
+  triggerNotificationToast('✓ Archive cleared — ' + archived.length + ' project(s) removed.');
+}
+
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 17: ARCHIVED REPORTS (clear button lives in header)
+//  SECTION 17: ARCHIVED REPORTS
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateArchiveReportsGrid() {
@@ -1408,7 +1517,7 @@ function clearArchivedReports() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 18: ACTIVITY SUMMARY (clear button + real recap)
+//  SECTION 18: ACTIVITY SUMMARY
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateActivitySummaryGrid() {
@@ -1483,7 +1592,6 @@ function generateActivitySummaryReport() {
 
   const pendingArchive = archiveRequests.filter(r => r.status === 'PENDING').length;
 
-  // Top reporters by active project count
   const reporterCounts = {};
   activeProjects.forEach(p => {
     if (p.reporter) reporterCounts[p.reporter] = (reporterCounts[p.reporter] || 0) + 1;
@@ -1541,7 +1649,7 @@ function generateActivitySummaryReport() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 19: SOURCES (admin-only clear all)
+//  SECTION 19: SOURCES
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateSourcesGrid() {
@@ -1837,6 +1945,22 @@ function generateNotificationBar() {
 function injectAdminClearButtons() {
   if (!currentUser || currentUser.role !== 'ADMIN') return;
 
+  // ── Clear All Archived Projects button ───────────────────────────
+  const arcBadge = document.getElementById('archiveCountBadge');
+  if (arcBadge && !document.getElementById('clearArchivedProjectsBtn')) {
+    const btn = document.createElement('button');
+    btn.id = 'clearArchivedProjectsBtn';
+    btn.className = 'btn btn-ghost';
+    btn.style.fontSize = '0.75rem';
+    btn.style.color = 'var(--danger)';
+    btn.style.borderColor = 'rgba(229,62,62,0.3)';
+    btn.style.whiteSpace = 'nowrap';
+    btn.style.marginRight = '0.5rem';
+    btn.textContent = '🗑 Clear Archive';
+    btn.addEventListener('click', clearAllArchivedProjects);
+    arcBadge.parentNode.insertBefore(btn, arcBadge);
+  }
+
   // ── Clear Closed-Out Reports button ──────────────────────────────
   const arcRepBadge = document.getElementById('archiveReportsCountBadge');
   if (arcRepBadge && !document.getElementById('clearArchiveReportsBtn')) {
@@ -1847,6 +1971,7 @@ function injectAdminClearButtons() {
     btn.style.color = 'var(--danger)';
     btn.style.borderColor = 'rgba(229,62,62,0.3)';
     btn.style.whiteSpace = 'nowrap';
+    btn.style.marginRight = '0.5rem';
     btn.textContent = '🗑 Clear Reports';
     btn.addEventListener('click', clearArchivedReports);
     arcRepBadge.parentNode.insertBefore(btn, arcRepBadge);
@@ -1862,6 +1987,7 @@ function injectAdminClearButtons() {
     btn.style.color = 'var(--danger)';
     btn.style.borderColor = 'rgba(229,62,62,0.3)';
     btn.style.whiteSpace = 'nowrap';
+    btn.style.marginRight = '0.5rem';
     btn.textContent = '🗑 Clear Summaries';
     btn.addEventListener('click', clearActivitySummaries);
     actSumBadge.parentNode.insertBefore(btn, actSumBadge);
@@ -2094,7 +2220,6 @@ function initializeApp() {
   const projectModal = document.getElementById('projectProfileModal');
   if (projectModal) {
     projectModal.addEventListener('click', async (e) => {
-      // Priority button handling
       const priorityBtn = e.target.closest('.priority-select-btn');
       if (priorityBtn && !priorityBtn.disabled) {
         e.preventDefault();
@@ -2286,7 +2411,7 @@ function initializeApp() {
     });
   });
 
-  console.log('✅ JCompass initialized (v2.3)');
+  console.log('✅ JCompass initialized (v2.4)');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
