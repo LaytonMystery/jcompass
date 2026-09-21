@@ -19,7 +19,8 @@ const errorBox   = document.getElementById('authError');
 const submitBtn  = document.getElementById('loginSubmitBtn');
 const loadingBox = document.getElementById('loginLoading');
 
-let supabase = null;
+// ⚠️ Renamed from `supabase` to avoid collision with window.supabase (the CDN global)
+let supabaseClient = null;
 
 function showError(msg) {
   errorBox.textContent = msg;
@@ -45,7 +46,7 @@ async function handleLogin(e) {
     return;
   }
 
-  if (!supabase) {
+  if (!supabaseClient) {
     showError('Authentication service is unavailable. Check your connection.');
     return;
   }
@@ -53,18 +54,17 @@ async function handleLogin(e) {
   setBusy(true);
 
   try {
-    // Prefer the server-side RPC if it exists (see install notes).
-    // Fallback to direct table read if the RPC isn't deployed.
     let row = null;
 
-    const rpc = await supabase.rpc('verify_login', { p_name: name, p_pass: pass });
+    // Preferred: server-side RPC
+    const rpc = await supabaseClient.rpc('verify_login', { p_name: name, p_pass: pass });
 
     if (!rpc.error) {
       const data = rpc.data;
       row = Array.isArray(data) ? data[0] : data;
     } else {
-      // Fallback path (direct read) — only works if you kept the select policy.
-      const q = await supabase
+      // Fallback: direct table read (only works if you kept the select policy)
+      const q = await supabaseClient
         .from('users')
         .select('id, name, pass, role, code')
         .eq('name', name)
@@ -88,7 +88,6 @@ async function handleLogin(e) {
       return;
     }
 
-    // ── Success: create the session object ────────────────────────────
     const session = {
       user: {
         id:   row.id,
@@ -101,9 +100,8 @@ async function handleLogin(e) {
     };
 
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    localStorage.removeItem('jcompass_user'); // legacy cleanup
+    localStorage.removeItem('jcompass_user');
 
-    // Clear the form so credentials aren't left in the DOM
     userInput.value = '';
     passInput.value = '';
 
@@ -145,6 +143,6 @@ form.addEventListener('submit', handleLogin);
     showError('Authentication library failed to load. Refresh the page.');
     return;
   }
-  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   console.log('JCompass: login controller ready.');
 })();
