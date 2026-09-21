@@ -1,6 +1,6 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v2.2                                          ║
+ * ║  JOURNALIST'S COMPASS v2.3                                          ║
  * ║  Supabase is the SINGLE source of truth.                            ║
  * ║  Local storage = disposable read cache only.                        ║
  * ╚══════════════════════════════════════════════════════════════════════╝
@@ -32,7 +32,7 @@ function initSupabaseClient() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 2: ONE-TIME LEGACY WIPE + VERSIONED CACHE
+//  SECTION 2: LEGACY WIPE + VERSIONED CACHE
 // ═══════════════════════════════════════════════════════════════════════
 
 function wipeLegacyCache() {
@@ -48,10 +48,9 @@ function wipeLegacyCache() {
   }
   toRemove.forEach(k => {
     try { localStorage.removeItem(k); } catch (e) {}
-    console.log('JCompass: wiped legacy cache key:', k);
   });
   if (toRemove.length > 0) {
-    console.log('JCompass: legacy wipe complete — ' + toRemove.length + ' keys removed.');
+    console.log('JCompass: wiped ' + toRemove.length + ' legacy cache keys.');
   }
 }
 
@@ -105,7 +104,6 @@ let currentUser = (function () {
 
 if (!currentUser) window.location.replace('login.html');
 
-// UI state
 let currentFilter = 'ALL';
 let searchQuery = '';
 let calendarMonth = new Date().getMonth();
@@ -114,7 +112,6 @@ let sourceSearchQuery = '';
 let attendanceSearchQuery = '';
 let activeProfileId = null;
 
-// Data stores — populated from Supabase on every boot.
 let projects          = [];
 let assignments       = [];
 let beats             = [];
@@ -124,6 +121,8 @@ let attendanceLogs    = [];
 let sources           = [];
 let archiveRequests   = [];
 let registeredUsersDB = [];
+let archivedReports   = [];
+let activitySummaries = [];
 let dismissedNoticeIds = cacheLoad(CACHE_KEYS.dismissedNotices, []);
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -150,7 +149,6 @@ async function syncAllDataFromSupabase() {
     console.error('JCompass: cannot sync — Supabase not initialized.');
     return;
   }
-
   console.log('🔄 Syncing all data from Supabase...');
 
   const tables = [
@@ -215,7 +213,6 @@ async function syncAllDataFromSupabase() {
     }
   }
 
-  // Users via RPC
   try {
     const { data, error } = await supabaseClient.rpc('list_users');
     if (error) throw error;
@@ -231,7 +228,6 @@ async function syncAllDataFromSupabase() {
     registeredUsersDB = [];
   }
 
-  // Attendance
   try {
     const { data, error } = await supabaseClient
       .from('attendance').select('*')
@@ -249,7 +245,6 @@ async function syncAllDataFromSupabase() {
     console.error('Sync "attendance" failed:', err);
   }
 
-  // Pings
   try {
     const { data, error } = await supabaseClient
       .from('pings').select('*')
@@ -270,12 +265,9 @@ async function syncAllDataFromSupabase() {
   console.log('✅ Sync complete.');
 }
 
-// ── Realtime ─────────────────────────────────────────────────────────
-
 async function subscribeRealtime() {
   if (!supabaseClient) return;
 
-  // Pings
   if (realtimePingsChannel) supabaseClient.removeChannel(realtimePingsChannel);
   realtimePingsChannel = supabaseClient
     .channel('pings-realtime')
@@ -302,7 +294,6 @@ async function subscribeRealtime() {
     })
     .subscribe();
 
-  // Attendance
   if (realtimeAttendanceChannel) supabaseClient.removeChannel(realtimeAttendanceChannel);
   realtimeAttendanceChannel = supabaseClient
     .channel('attendance-realtime')
@@ -323,7 +314,6 @@ async function subscribeRealtime() {
     })
     .subscribe();
 
-  // Archive requests
   if (realtimeArchiveChannel) supabaseClient.removeChannel(realtimeArchiveChannel);
   realtimeArchiveChannel = supabaseClient
     .channel('archive-requests-realtime')
@@ -493,9 +483,12 @@ function rebuildApplicationDOMViews() {
   initAttendancePage();
   generateArchiveGrid();
   renderArchiveRequestsPanel();
+  generateArchiveReportsGrid();
+  generateActivitySummaryGrid();
   generateSourcesGrid();
   generateUsersTable();
   generateNotificationBar();
+  injectAdminClearButtons();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -596,8 +589,12 @@ function openProjectProfile(projectId) {
   document.getElementById('profileTags').value = p.tags || '';
   document.getElementById('profileStatusSelect').value = p.status || 'ACTIVE';
 
-  applyProfilePermissions(p);
+  // Highlight current priority button
+  document.querySelectorAll('.priority-select-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.priority === (p.priority || 'MEDIUM'));
+  });
 
+  applyProfilePermissions(p);
   document.getElementById('projectProfileModal').classList.add('active');
 }
 
@@ -618,6 +615,13 @@ function applyProfilePermissions(p) {
   ['profileProgressInput','profileAssignedReporter','profileNotes','profileTags','profileStatusSelect'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = !isAdmin;
+  });
+
+  // Priority buttons: read-only for staff
+  document.querySelectorAll('.priority-select-btn').forEach(btn => {
+    btn.disabled = !isAdmin;
+    btn.style.cursor = isAdmin ? 'pointer' : 'not-allowed';
+    btn.style.opacity = isAdmin ? '1' : '0.5';
   });
 
   if (requestBtn) {
@@ -649,12 +653,16 @@ async function saveProjectProfile() {
     return;
   }
 
+  const activePriorityBtn = document.querySelector('.priority-select-btn.active');
+  const priority = activePriorityBtn ? activePriorityBtn.dataset.priority : 'MEDIUM';
+
   const updates = {
     progress: parseInt(document.getElementById('profileProgressInput').value) || 0,
     reporter: document.getElementById('profileAssignedReporter').value.trim(),
     notes: document.getElementById('profileNotes').value.trim(),
     tags: document.getElementById('profileTags').value.trim(),
-    status: document.getElementById('profileStatusSelect').value
+    status: document.getElementById('profileStatusSelect').value,
+    priority: priority
   };
 
   if (supabaseClient) {
@@ -688,27 +696,17 @@ async function archiveProject(projectId) {
     return;
   }
   const p = projects.find(x => x.id === projectId);
-  if (!p) {
-    triggerNotificationToast('Project not found.');
-    return;
-  }
+  if (!p) { triggerNotificationToast('Project not found.'); return; }
 
   if (!confirm('Archive "' + p.title + '"? It will move to Project Archive.')) return;
 
   if (supabaseClient) {
     try {
       const { data, error } = await supabaseClient
-        .from('projects')
-        .update({ archived: true })
-        .eq('id', projectId)
-        .select();
-
+        .from('projects').update({ archived: true }).eq('id', projectId).select();
       if (error) throw error;
-      if (!data || data.length === 0) {
-        throw new Error('Update blocked by Supabase (check RLS policy on projects).');
-      }
+      if (!data || data.length === 0) throw new Error('Update blocked by Supabase.');
     } catch (err) {
-      console.error('archiveProject error:', err);
       triggerNotificationToast('Archive failed: ' + err.message);
       return;
     }
@@ -727,27 +725,17 @@ async function deleteProject(projectId) {
     return;
   }
   const p = projects.find(x => x.id === projectId);
-  if (!p) {
-    triggerNotificationToast('Project not found.');
-    return;
-  }
+  if (!p) { triggerNotificationToast('Project not found.'); return; }
 
   if (!confirm('Permanently delete "' + p.title + '"? This cannot be undone.')) return;
 
   if (supabaseClient) {
     try {
       const { data, error } = await supabaseClient
-        .from('projects')
-        .delete()
-        .eq('id', projectId)
-        .select();
-
+        .from('projects').delete().eq('id', projectId).select();
       if (error) throw error;
-      if (!data || data.length === 0) {
-        throw new Error('Delete blocked by Supabase (check RLS policy on projects).');
-      }
+      if (!data || data.length === 0) throw new Error('Delete blocked by Supabase.');
     } catch (err) {
-      console.error('deleteProject error:', err);
       triggerNotificationToast('Delete failed: ' + err.message);
       return;
     }
@@ -766,20 +754,12 @@ async function deleteProject(projectId) {
 
 async function submitArchiveRequest(projectId) {
   const p = projects.find(x => x.id === projectId);
-  if (!p) {
-    triggerNotificationToast('Project not found.');
-    return;
-  }
+  if (!p) { triggerNotificationToast('Project not found.'); return; }
 
   const hasPending = archiveRequests.some(
-    r => r.project_id === projectId &&
-         r.requester === currentUser.name &&
-         r.status === 'PENDING'
+    r => r.project_id === projectId && r.requester === currentUser.name && r.status === 'PENDING'
   );
-  if (hasPending) {
-    triggerNotificationToast('You already have a pending request.');
-    return;
-  }
+  if (hasPending) { triggerNotificationToast('You already have a pending request.'); return; }
 
   const payload = {
     project_id: projectId,
@@ -798,13 +778,10 @@ async function submitArchiveRequest(projectId) {
       if (error) throw error;
       payload.id = data ? data.id : Date.now();
     } catch (err) {
-      console.error('Submit archive request failed:', err);
       triggerNotificationToast('Backend error: ' + err.message);
       return;
     }
-  } else {
-    payload.id = Date.now();
-  }
+  } else { payload.id = Date.now(); }
 
   archiveRequests.push(payload);
   flushCachedCollections();
@@ -828,7 +805,6 @@ async function approveArchiveRequest(requestId) {
         .from('projects').update({ archived: true }).eq('id', req.project_id);
       if (projErr) throw projErr;
     } catch (err) {
-      console.error('Approve archive request failed:', err);
       triggerNotificationToast('Backend error: ' + err.message);
       return;
     }
@@ -855,7 +831,6 @@ async function denyArchiveRequest(requestId) {
         .from('archive_requests').update({ status: 'DENIED' }).eq('id', requestId);
       if (error) throw error;
     } catch (err) {
-      console.error('Deny archive request failed:', err);
       triggerNotificationToast('Backend error: ' + err.message);
       return;
     }
@@ -889,10 +864,7 @@ function renderArchiveRequestsPanel() {
   }
 
   const pending = archiveRequests.filter(r => r.status === 'PENDING');
-  if (pending.length === 0) {
-    panel.style.display = 'none';
-    return;
-  }
+  if (pending.length === 0) { panel.style.display = 'none'; return; }
 
   panel.style.display = 'block';
   panel.innerHTML =
@@ -1306,7 +1278,6 @@ async function processFieldTelemetryMarking() {
         });
         if (error) throw error;
       } catch (err) {
-        console.error('Save attendance failed:', err);
         triggerNotificationToast('Backend error: ' + err.message);
         btn.disabled = false;
         btn.innerText = '📍 Timestamp Geo-Presence Profile';
@@ -1392,7 +1363,185 @@ function generateArchiveGrid() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 17: SOURCES
+//  SECTION 17: ARCHIVED REPORTS (clear button lives in header)
+// ═══════════════════════════════════════════════════════════════════════
+
+function generateArchiveReportsGrid() {
+  const container = document.getElementById('archiveReportsGrid');
+  const countBadge = document.getElementById('archiveReportsCountBadge');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (countBadge) countBadge.innerText = archivedReports.length + ' filed';
+
+  if (archivedReports.length === 0) {
+    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No reports filed yet.</div>';
+    return;
+  }
+
+  archivedReports.forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML =
+      '<div class="card-title">' + (r.title || 'Report') + '</div>' +
+      '<div style="font-size:0.85rem;color:var(--text-muted); white-space:pre-line; line-height:1.5;">' + (r.summary || '') + '</div>' +
+      '<div style="font-size:0.72rem;color:var(--text-muted); margin-top:0.5rem;">Filed by <b>' + (r.closedBy || 'Unknown') + '</b>' +
+      (r.timestamp ? ' • ' + r.timestamp : '') + '</div>';
+    container.appendChild(card);
+  });
+}
+
+function clearArchivedReports() {
+  if (!currentUser || currentUser.role !== 'ADMIN') {
+    triggerNotificationToast('Admin clearance required.');
+    return;
+  }
+  if (archivedReports.length === 0) {
+    triggerNotificationToast('No reports to clear.');
+    return;
+  }
+  if (!confirm('Clear all ' + archivedReports.length + ' closed-out report(s)? This cannot be undone.')) return;
+
+  archivedReports = [];
+  generateArchiveReportsGrid();
+  triggerNotificationToast('✓ Reports cleared.');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 18: ACTIVITY SUMMARY (clear button + real recap)
+// ═══════════════════════════════════════════════════════════════════════
+
+function generateActivitySummaryGrid() {
+  const container = document.getElementById('activitySummaryGrid');
+  const countBadge = document.getElementById('activitySummaryCountBadge');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (countBadge) countBadge.innerText = activitySummaries.length + ' generated';
+
+  if (activitySummaries.length === 0) {
+    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No summaries generated.</div>';
+    return;
+  }
+
+  activitySummaries.forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML =
+      '<div class="card-title">' + (r.title || 'Summary') + '</div>' +
+      '<div style="font-size:0.82rem; color:var(--text-muted); white-space:pre-line; line-height:1.6; font-family:var(--font-body);">' + (r.summary || '') + '</div>' +
+      '<div style="font-size:0.72rem;color:var(--text-muted); margin-top:0.75rem;">Generated by <b>' + (r.generatedBy || 'Unknown') + '</b>' +
+      (r.timestamp ? ' • ' + new Date(r.timestamp).toLocaleString('en-US') : '') + '</div>';
+    container.appendChild(card);
+  });
+}
+
+function clearActivitySummaries() {
+  if (!currentUser || currentUser.role !== 'ADMIN') {
+    triggerNotificationToast('Admin clearance required.');
+    return;
+  }
+  if (activitySummaries.length === 0) {
+    triggerNotificationToast('No summaries to clear.');
+    return;
+  }
+  if (!confirm('Clear all ' + activitySummaries.length + ' generated summary(ies)? This cannot be undone.')) return;
+
+  activitySummaries = [];
+  generateActivitySummaryGrid();
+  triggerNotificationToast('✓ Summaries cleared.');
+}
+
+function generateActivitySummaryReport() {
+  if (!currentUser || currentUser.role !== 'ADMIN') {
+    triggerNotificationToast('Admin clearance required.');
+    return;
+  }
+
+  const now = new Date();
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const todayStr = now.toLocaleDateString('en-CA');
+
+  const activeProjects = projects.filter(p => !p.archived);
+  const archivedProjects = projects.filter(p => p.archived);
+
+  const overdue = activeProjects.filter(p => {
+    if (!p.deadline || p.status === 'FILED' || p.status === 'PUBLISHED') return false;
+    return new Date(p.deadline) < today;
+  });
+  const dueSoon = activeProjects.filter(p => {
+    if (!p.deadline || p.status === 'FILED' || p.status === 'PUBLISHED') return false;
+    const diff = Math.ceil((new Date(p.deadline) - today) / (1000 * 60 * 60 * 24));
+    return diff >= 0 && diff <= 3;
+  });
+
+  const staffCount = registeredUsersDB.filter(u => u.role === 'STAFF').length;
+  const adminCount = registeredUsersDB.filter(u => u.role === 'ADMIN').length;
+
+  const todayCheckins = attendanceLogs.filter(l => l.date === todayStr);
+  const recentLocation = todayCheckins[0] ? todayCheckins[0].location : 'No activity today';
+
+  const pendingArchive = archiveRequests.filter(r => r.status === 'PENDING').length;
+
+  // Top reporters by active project count
+  const reporterCounts = {};
+  activeProjects.forEach(p => {
+    if (p.reporter) reporterCounts[p.reporter] = (reporterCounts[p.reporter] || 0) + 1;
+  });
+  const topReporters = Object.entries(reporterCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([name, count]) => '     · ' + name + ' (' + count + ' project' + (count !== 1 ? 's' : '') + ')')
+    .join('\n');
+
+  const activeBeats = beats.filter(b => !b.archived).length;
+  const activeAssignments = assignments.filter(a => !a.archived).length;
+  const totalSources = sources.length;
+  const scheduledEvents = events.filter(e => !e.completed).length;
+
+  const dateLabel = now.toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+  });
+
+  const summaryText =
+    '🗓  ' + dateLabel + '\n' +
+    '\n' +
+    '📊  PROJECT PORTFOLIO\n' +
+    '     Active: ' + activeProjects.length + '    Archived: ' + archivedProjects.length + '\n' +
+    '     Overdue: ' + overdue.length + '    Due within 3 days: ' + dueSoon.length + '\n' +
+    '\n' +
+    '👥  TEAM ON DUTY\n' +
+    '     Staff: ' + staffCount + '    Admins: ' + adminCount + '\n' +
+    (topReporters ? '     Top reporters by workload:\n' + topReporters + '\n' : '') +
+    '\n' +
+    '📍  FIELD ACTIVITY\n' +
+    '     Check-ins today: ' + todayCheckins.length + '\n' +
+    '     Recent location: ' + recentLocation + '\n' +
+    '\n' +
+    '📁  CONTENT PIPELINE\n' +
+    '     Active beats: ' + activeBeats + '\n' +
+    '     Open assignments: ' + activeAssignments + '\n' +
+    '     Sources in vault: ' + totalSources + '\n' +
+    '     Pending events: ' + scheduledEvents + '\n' +
+    '\n' +
+    '⚠️  ATTENTION REQUIRED\n' +
+    '     Pending archive requests: ' + pendingArchive + '\n' +
+    '     Overdue projects: ' + overdue.length;
+
+  activitySummaries.unshift({
+    id: Date.now(),
+    title: 'Activity Summary — ' + now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    summary: summaryText,
+    generatedBy: currentUser.name,
+    timestamp: now.toISOString()
+  });
+
+  generateActivitySummaryGrid();
+  triggerNotificationToast('✓ Activity summary generated.');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 19: SOURCES (admin-only clear all)
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateSourcesGrid() {
@@ -1421,8 +1570,36 @@ function generateSourcesGrid() {
   });
 }
 
+async function clearAllSources() {
+  if (!currentUser || currentUser.role !== 'ADMIN') {
+    triggerNotificationToast('Admin clearance required.');
+    return;
+  }
+  if (sources.length === 0) {
+    triggerNotificationToast('No sources to clear.');
+    return;
+  }
+  if (!confirm('Permanently delete all ' + sources.length + ' sources from the vault?')) return;
+  if (!confirm('This cannot be undone. Are you absolutely sure?')) return;
+
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient.from('sources').delete().neq('id', -1);
+      if (error) throw error;
+    } catch (err) {
+      triggerNotificationToast('Backend error: ' + err.message);
+      return;
+    }
+  }
+
+  sources = [];
+  flushCachedCollections();
+  generateSourcesGrid();
+  triggerNotificationToast('✓ Source vault cleared.');
+}
+
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 18: USER MANAGEMENT
+//  SECTION 20: USER MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateUsersTable() {
@@ -1549,7 +1726,7 @@ async function refreshUsersFromBackend() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 19: CSV EXPORT
+//  SECTION 21: CSV EXPORT
 // ═══════════════════════════════════════════════════════════════════════
 
 function downloadCSV(filename, rows) {
@@ -1600,7 +1777,7 @@ function exportAttendanceCSV() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 20: NOTIFICATION BAR
+//  SECTION 22: NOTIFICATION BAR
 // ═══════════════════════════════════════════════════════════════════════
 
 function dismissNotice(noticeId) {
@@ -1654,7 +1831,60 @@ function generateNotificationBar() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 21: INITIALIZATION
+//  SECTION 23: INJECT ADMIN CLEAR BUTTONS
+// ═══════════════════════════════════════════════════════════════════════
+
+function injectAdminClearButtons() {
+  if (!currentUser || currentUser.role !== 'ADMIN') return;
+
+  // ── Clear Closed-Out Reports button ──────────────────────────────
+  const arcRepBadge = document.getElementById('archiveReportsCountBadge');
+  if (arcRepBadge && !document.getElementById('clearArchiveReportsBtn')) {
+    const btn = document.createElement('button');
+    btn.id = 'clearArchiveReportsBtn';
+    btn.className = 'btn btn-ghost';
+    btn.style.fontSize = '0.75rem';
+    btn.style.color = 'var(--danger)';
+    btn.style.borderColor = 'rgba(229,62,62,0.3)';
+    btn.style.whiteSpace = 'nowrap';
+    btn.textContent = '🗑 Clear Reports';
+    btn.addEventListener('click', clearArchivedReports);
+    arcRepBadge.parentNode.insertBefore(btn, arcRepBadge);
+  }
+
+  // ── Clear Activity Summaries button ──────────────────────────────
+  const actSumBadge = document.getElementById('activitySummaryCountBadge');
+  if (actSumBadge && !document.getElementById('clearActivitySummariesBtn')) {
+    const btn = document.createElement('button');
+    btn.id = 'clearActivitySummariesBtn';
+    btn.className = 'btn btn-ghost';
+    btn.style.fontSize = '0.75rem';
+    btn.style.color = 'var(--danger)';
+    btn.style.borderColor = 'rgba(229,62,62,0.3)';
+    btn.style.whiteSpace = 'nowrap';
+    btn.textContent = '🗑 Clear Summaries';
+    btn.addEventListener('click', clearActivitySummaries);
+    actSumBadge.parentNode.insertBefore(btn, actSumBadge);
+  }
+
+  // ── Clear Source Vault button ────────────────────────────────────
+  const addSourceBtn = document.getElementById('addSourceBtn');
+  if (addSourceBtn && !document.getElementById('clearSourcesBtn')) {
+    const btn = document.createElement('button');
+    btn.id = 'clearSourcesBtn';
+    btn.className = 'btn btn-ghost';
+    btn.style.fontSize = '0.8rem';
+    btn.style.color = 'var(--danger)';
+    btn.style.borderColor = 'rgba(229,62,62,0.3)';
+    btn.style.marginRight = '0.5rem';
+    btn.textContent = '🗑 Clear Vault';
+    btn.addEventListener('click', clearAllSources);
+    addSourceBtn.parentNode.insertBefore(btn, addSourceBtn);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 24: INITIALIZATION
 // ═══════════════════════════════════════════════════════════════════════
 
 function initializeApp() {
@@ -1768,9 +1998,7 @@ function initializeApp() {
           triggerNotificationToast('Backend error: ' + err.message);
           return;
         }
-      } else {
-        payload.id = Date.now();
-      }
+      } else { payload.id = Date.now(); }
 
       projects.push(payload);
       flushCachedCollections();
@@ -1810,9 +2038,7 @@ function initializeApp() {
           triggerNotificationToast('Backend error: ' + err.message);
           return;
         }
-      } else {
-        payload.id = Date.now();
-      }
+      } else { payload.id = Date.now(); }
 
       sources.push({
         id: payload.id, name, beat, contact, reliability, notes,
@@ -1864,30 +2090,36 @@ function initializeApp() {
   const saveProfileBtn = document.getElementById('profileSaveBtn');
   if (saveProfileBtn) saveProfileBtn.addEventListener('click', saveProjectProfile);
 
-  // ── Project modal: archive / delete / request archive ──────────────
-  // Event delegation: listeners survive any inner re-render.
+  // ── Project modal event delegation ─────────────────────────────────
   const projectModal = document.getElementById('projectProfileModal');
   if (projectModal) {
     projectModal.addEventListener('click', async (e) => {
+      // Priority button handling
+      const priorityBtn = e.target.closest('.priority-select-btn');
+      if (priorityBtn && !priorityBtn.disabled) {
+        e.preventDefault();
+        e.stopPropagation();
+        document.querySelectorAll('.priority-select-btn').forEach(b => b.classList.remove('active'));
+        priorityBtn.classList.add('active');
+        return;
+      }
+
       const archiveBtn = e.target.closest('#profileArchiveBtn');
       const deleteBtn  = e.target.closest('#profileDeleteBtn');
       const requestBtn = e.target.closest('#profileRequestArchiveBtn');
 
       if (archiveBtn) {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         if (activeProfileId == null) { triggerNotificationToast('No project selected.'); return; }
         await archiveProject(activeProfileId);
       }
       if (deleteBtn) {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         if (activeProfileId == null) { triggerNotificationToast('No project selected.'); return; }
         await deleteProject(activeProfileId);
       }
       if (requestBtn) {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         if (activeProfileId == null) { triggerNotificationToast('No project selected.'); return; }
         await submitArchiveRequest(activeProfileId);
       }
@@ -1943,9 +2175,7 @@ function initializeApp() {
           triggerNotificationToast('Backend error: ' + err.message);
           return;
         }
-      } else {
-        payload.id = Date.now();
-      }
+      } else { payload.id = Date.now(); }
 
       beats.push({ id: payload.id, name, reporter, priority, imgData: '', archived: false });
       flushCachedCollections();
@@ -1976,9 +2206,7 @@ function initializeApp() {
           triggerNotificationToast('Backend error: ' + err.message);
           return;
         }
-      } else {
-        payload.id = Date.now();
-      }
+      } else { payload.id = Date.now(); }
 
       assignments.push({ id: payload.id, title, assignee, archived: false });
       flushCachedCollections();
@@ -2009,9 +2237,7 @@ function initializeApp() {
           triggerNotificationToast('Backend error: ' + err.message);
           return;
         }
-      } else {
-        payload.id = Date.now();
-      }
+      } else { payload.id = Date.now(); }
 
       events.push(payload);
       flushCachedCollections();
@@ -2045,6 +2271,10 @@ function initializeApp() {
     });
   }
 
+  // ── Activity summary generation ────────────────────────────────────
+  const genSummaryBtn = document.getElementById('generateActivitySummaryBtn');
+  if (genSummaryBtn) genSummaryBtn.addEventListener('click', generateActivitySummaryReport);
+
   // ── Theme buttons ──────────────────────────────────────────────────
   document.querySelectorAll('.theme-chip-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2056,11 +2286,11 @@ function initializeApp() {
     });
   });
 
-  console.log('✅ JCompass initialized (v2.2)');
+  console.log('✅ JCompass initialized (v2.3)');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 22: CONTROL TRAY
+//  SECTION 25: CONTROL TRAY
 // ═══════════════════════════════════════════════════════════════════════
 
 (function wireControlTray() {
@@ -2090,7 +2320,7 @@ function initializeApp() {
 })();
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 23: ONESIGNAL
+//  SECTION 26: ONESIGNAL
 // ═══════════════════════════════════════════════════════════════════════
 
 const ONESIGNAL_APP_ID = 'e76cbe01-1a76-4f3d-a45d-9d155a126093';
@@ -2130,7 +2360,7 @@ async function setOneSignalUser(userName) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 24: BOOTSTRAP
+//  SECTION 27: BOOTSTRAP
 // ═══════════════════════════════════════════════════════════════════════
 
 if (document.readyState === 'loading') {
