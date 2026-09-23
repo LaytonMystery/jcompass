@@ -1,6 +1,4 @@
 {
-  "rewrites": [
-    { "source": "/", "destination": "/api/index" },
-    { "source": "/login", "destination": "/api/login" }
-  ]
+  "cleanUrls": true,
+  "trailingSlash": false
 }
