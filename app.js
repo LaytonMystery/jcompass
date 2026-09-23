@@ -1,7 +1,7 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v3.1                                          ║
- * ║  Multi-select Deployments + Geo Map + Audit Log                     ║
+ * ║  JOURNALIST'S COMPASS v5.0                                          ║
+ * ║  Calendar Popup · Work Assigned · Project Submissions · Radio Lists ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
@@ -13,7 +13,7 @@ const SUPABASE_URL = 'https://odqfqaywzwvxkvqptzxo.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_6CWGOKOIj4aXmRpidG6dVA_nYvcctoP';
 const SESSION_KEY = 'jcompass_session';
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v5';
 const CACHE_PREFIX  = 'jcompass_' + CACHE_VERSION + '_';
 
 let supabaseClient = null;
@@ -123,10 +123,6 @@ let activitySummaries = [];
 let auditLog          = [];
 let dismissedNoticeIds = cacheLoad(CACHE_KEYS.dismissedNotices, []);
 
-// ═══════════════════════════════════════════════════════════════════════
-//  SECTION 4: CACHE FLUSH
-// ═══════════════════════════════════════════════════════════════════════
-
 function flushCachedCollections() {
   cacheSave(CACHE_KEYS.projects, projects);
   cacheSave(CACHE_KEYS.assignments, assignments);
@@ -140,7 +136,7 @@ function flushCachedCollections() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 5: AUDIT LOG HELPER
+//  SECTION 4: AUDIT LOG HELPER
 // ═══════════════════════════════════════════════════════════════════════
 
 async function logAudit(action, targetType, targetId, targetName, details) {
@@ -155,11 +151,8 @@ async function logAudit(action, targetType, targetId, targetName, details) {
   };
 
   if (supabaseClient) {
-    try {
-      await supabaseClient.from('audit_log').insert(entry);
-    } catch (err) {
-      console.warn('Audit log write failed:', err);
-    }
+    try { await supabaseClient.from('audit_log').insert(entry); }
+    catch (err) { console.warn('Audit log write failed:', err); }
   }
 
   auditLog.unshift({
@@ -178,7 +171,7 @@ async function logAudit(action, targetType, targetId, targetName, details) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 6: SUPABASE SYNC
+//  SECTION 5: SUPABASE SYNC
 // ═══════════════════════════════════════════════════════════════════════
 
 async function syncAllDataFromSupabase() {
@@ -188,7 +181,7 @@ async function syncAllDataFromSupabase() {
   }
   console.log('🔄 Syncing...');
 
-  // Projects
+  // Projects (with submission fields)
   try {
     const { data, error } = await supabaseClient.from('projects').select('*').order('id', { ascending: true });
     if (error) throw error;
@@ -196,7 +189,11 @@ async function syncAllDataFromSupabase() {
       id: p.id, title: p.title, category: p.category, deadline: p.deadline,
       status: p.status, priority: p.priority, progress: p.progress,
       reporter: p.reporter || '', notes: p.notes || '', tags: p.tags || '',
-      archived: p.archived || false
+      archived: p.archived || false, created_at: p.created_at,
+      submission_text: p.submission_text || '',
+      submission_file: p.submission_file || '',
+      submitted_by: p.submitted_by || '',
+      submitted_at: p.submitted_at || null
     }));
     console.log('   ✓ Projects:', projects.length);
   } catch (err) { console.error('Sync projects failed:', err); }
@@ -231,9 +228,9 @@ async function syncAllDataFromSupabase() {
       reviewed_by: a.reviewed_by || '',
       reviewed_at: a.reviewed_at || null,
       review_notes: a.review_notes || '',
-      archived: a.archived || false
+      archived: a.archived || false, created_at: a.created_at
     }));
-    console.log('   ✓ Assignments:', assignments.length);
+    console.log('   ✓ Tasks:', assignments.length);
   } catch (err) { console.error('Sync assignments failed:', err); }
 
   // Events
@@ -247,7 +244,7 @@ async function syncAllDataFromSupabase() {
     console.log('   ✓ Events:', events.length);
   } catch (err) { console.error('Sync events failed:', err); }
 
-  // Sources
+  // Contacts
   try {
     const { data, error } = await supabaseClient.from('sources').select('*').order('id', { ascending: true });
     if (error) throw error;
@@ -256,7 +253,7 @@ async function syncAllDataFromSupabase() {
       reliability: s.reliability || 'MEDIUM', notes: s.notes || '',
       createdBy: s.created_by || 'Unknown'
     }));
-    console.log('   ✓ Sources:', sources.length);
+    console.log('   ✓ Contacts:', sources.length);
   } catch (err) { console.error('Sync sources failed:', err); }
 
   // Archive requests
@@ -281,7 +278,7 @@ async function syncAllDataFromSupabase() {
       target_name: a.target_name || '', details: a.details || '',
       created_at: a.created_at
     }));
-    console.log('   ✓ Audit Log:', auditLog.length);
+    console.log('   ✓ Activity Log:', auditLog.length);
   } catch (err) { console.error('Sync audit_log failed:', err); }
 
   // Users
@@ -321,7 +318,7 @@ async function syncAllDataFromSupabase() {
         month: 'short', day: 'numeric', year: 'numeric'
       })
     }));
-    console.log('   ✓ Pings:', announcements.length);
+    console.log('   ✓ Messages:', announcements.length);
   } catch (err) { console.error('Sync pings failed:', err); }
 
   flushCachedCollections();
@@ -407,7 +404,7 @@ async function subscribeRealtime() {
           reviewed_by: a.reviewed_by || '',
           reviewed_at: a.reviewed_at || null,
           review_notes: a.review_notes || '',
-          archived: a.archived || false
+          archived: a.archived || false, created_at: a.created_at
         }));
         flushCachedCollections();
         generateAssignmentsGrid();
@@ -417,7 +414,7 @@ async function subscribeRealtime() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 7: NOTIFICATIONS
+//  SECTION 6: NOTIFICATIONS
 // ═══════════════════════════════════════════════════════════════════════
 
 function refreshNotificationPermissionUI() {
@@ -431,7 +428,7 @@ function refreshNotificationPermissionUI() {
   if (Notification.permission === 'granted') {
     btn.textContent = '🔔 Push Alerts Enabled';
     btn.disabled = true;
-    label.textContent = 'You will get device popups for new pings.';
+    label.textContent = 'You will get device popups for new messages.';
   } else if (Notification.permission === 'denied') {
     btn.textContent = '🔕 Push Alerts Blocked';
     btn.disabled = true;
@@ -455,7 +452,7 @@ function notifyIncomingPing(ann) {
   if (!isPingedToMe && !isBroadcastAll) return;
   if (ann.sender === currentUser.name) return;
 
-  const title = isBroadcastAll ? 'JCompass — @All Desks' : 'JCompass — Direct Ping';
+  const title = isBroadcastAll ? 'JCompass — Announcement' : 'JCompass — Direct Message';
   const body = ann.sender + ': ' + ann.text;
   const canShowNative = ('Notification' in window) && Notification.permission === 'granted';
 
@@ -495,15 +492,15 @@ async function dispatchPing(sender, target, text) {
 
   if (typeof sendPushNotification === 'function') {
     if (target === 'ALL') {
-      sendPushNotification('📰 Newsroom Broadcast', sender + ': ' + text);
+      sendPushNotification('📰 Announcement', sender + ': ' + text);
     } else {
-      sendPushNotification('📌 Direct Ping from ' + sender, text, target);
+      sendPushNotification('📌 Message from ' + sender, text, target);
     }
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 8: SESSION
+//  SECTION 7: SESSION
 // ═══════════════════════════════════════════════════════════════════════
 
 async function enforceSessionGuard() {
@@ -541,17 +538,17 @@ function evaluateClearancePermissions() {
 
   const pingSelect = document.getElementById('announcePingTarget');
   if (pingSelect) {
-    pingSelect.innerHTML = '<option value="ALL">@All Desks</option>';
+    pingSelect.innerHTML = '<option value="ALL">Send to All</option>';
     registeredUsersDB.forEach(u => {
       if (u.role === 'STAFF') {
-        pingSelect.innerHTML += '<option value="' + u.name + '">⚡ Ping: ' + u.name + '</option>';
+        pingSelect.innerHTML += '<option value="' + u.name + '">Message: ' + u.name + '</option>';
       }
     });
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 9: MASTER REBUILD
+//  SECTION 8: MASTER REBUILD
 // ═══════════════════════════════════════════════════════════════════════
 
 function rebuildApplicationDOMViews() {
@@ -576,7 +573,7 @@ function rebuildApplicationDOMViews() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 10: DASHBOARD STATS + PROJECTS
+//  SECTION 9: DASHBOARD STATS + PROJECTS
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateDashboardStats() {
@@ -606,6 +603,14 @@ function generateDashboardStats() {
   set('statDueSoon', dueSoon.length);
   set('statStaffCount', staffCount);
   set('statTodayCheckins', todayCheckins);
+}
+
+function formatCreatedBy(item) {
+  if (!item) return '';
+  const name = item.creator || item.createdBy || item.created_by || '';
+  if (!name) return '';
+  const date = item.created_at ? new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+  return '<div class="card-creator-footer">👤 Created by <b>' + name + '</b>' + (date ? ' • ' + date : '') + '</div>';
 }
 
 function generateProjectDashboard() {
@@ -648,7 +653,8 @@ function generateProjectDashboard() {
       reporterHtml +
       (tagsHtml ? '<div class="card-tags">' + tagsHtml + '</div>' : '') +
       '<div class="card-meta"><span>📅 ' + (p.deadline || '—') + '</span><span class="status-badge ' + statusClass + '">' + (p.status || 'ACTIVE') + '</span></div>' +
-      '<div class="card-actions"><button class="card-action-btn profile-btn" data-id="' + p.id + '">📋 View</button></div>';
+      '<div class="card-actions"><button class="card-action-btn profile-btn" data-id="' + p.id + '">📋 View Details</button></div>' +
+      formatCreatedBy({ creator: p.reporter, created_at: p.created_at });
     container.appendChild(card);
   });
 
@@ -680,6 +686,32 @@ function openProjectProfile(projectId) {
   document.querySelectorAll('.priority-select-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.priority === (p.priority || 'MEDIUM'));
   });
+
+  // Output submission section
+  const subInfo = document.getElementById('profileSubmissionInfo');
+  const subBtn = document.getElementById('profileSubmitOutputBtn');
+  if (subInfo && subBtn) {
+    if (p.submitted_by) {
+      subInfo.innerHTML =
+        '<div style="color:#9ae6b4; font-weight:600;">✓ Submitted by ' + p.submitted_by + '</div>' +
+        '<div style="font-size:0.78rem; color:var(--text-muted); margin-top:0.25rem;">' + (p.submitted_at ? new Date(p.submitted_at).toLocaleString('en-US') : '—') + '</div>' +
+        (p.submission_text ? '<div style="margin-top:0.5rem; background:rgba(0,0,0,0.2); padding:0.6rem; border-radius:6px; white-space:pre-line; font-size:0.82rem;">' + p.submission_text + '</div>' : '') +
+        (p.submission_file ? '<div style="margin-top:0.5rem;"><a href="' + p.submission_file + '" download="output" class="btn btn-ghost" style="font-size:0.78rem; text-decoration:none;">⬇ Download Attachment</a></div>' : '');
+      subBtn.innerText = '🔄 Update Output';
+    } else {
+      subInfo.textContent = 'No output submitted yet.';
+      subBtn.innerText = '📤 Submit Output';
+    }
+
+    const isAssigned = p.reporter && p.reporter.toLowerCase() === currentUser.name.toLowerCase();
+    const isAdmin = currentUser.role === 'ADMIN';
+    if (isAssigned || isAdmin) {
+      subBtn.style.display = '';
+      subBtn.onclick = () => openProjectSubmissionModal(p.id);
+    } else {
+      subBtn.style.display = 'none';
+    }
+  }
 
   applyProfilePermissions(p);
   document.getElementById('projectProfileModal').classList.add('active');
@@ -735,7 +767,7 @@ async function saveProjectProfile() {
   const p = projects.find(x => x.id === activeProfileId);
   if (!p) return;
   if (currentUser.role !== 'ADMIN') {
-    triggerNotificationToast('Admin clearance required.');
+    triggerNotificationToast('Admin access required.');
     return;
   }
 
@@ -766,21 +798,21 @@ async function saveProjectProfile() {
 
   Object.assign(p, updates);
   await logAudit('update_project', 'project', p.id, p.title,
-    'Progress: ' + updates.progress + '%, Status: ' + updates.status + ', Priority: ' + priority);
+    'Progress: ' + updates.progress + '%, Status: ' + updates.status);
 
   flushCachedCollections();
   rebuildApplicationDOMViews();
   document.getElementById('projectProfileModal').classList.remove('active');
-  triggerNotificationToast('✓ Project profile saved.');
+  triggerNotificationToast('✓ Project saved.');
 }
 
 async function archiveProject(projectId) {
   if (!currentUser || currentUser.role !== 'ADMIN') {
-    triggerNotificationToast('Admin clearance required.');
+    triggerNotificationToast('Admin access required.');
     return;
   }
   const p = projects.find(x => x.id === projectId);
-  if (!p) { triggerNotificationToast('Project not found.'); return; }
+  if (!p) return;
 
   if (!confirm('Archive "' + p.title + '"?')) return;
 
@@ -797,7 +829,7 @@ async function archiveProject(projectId) {
   }
 
   p.archived = true;
-  await logAudit('archive_project', 'project', p.id, p.title, 'Moved to archive vault');
+  await logAudit('archive_project', 'project', p.id, p.title, 'Moved to archive');
   flushCachedCollections();
   document.getElementById('projectProfileModal').classList.remove('active');
   rebuildApplicationDOMViews();
@@ -806,11 +838,11 @@ async function archiveProject(projectId) {
 
 async function deleteProject(projectId) {
   if (!currentUser || currentUser.role !== 'ADMIN') {
-    triggerNotificationToast('Admin clearance required.');
+    triggerNotificationToast('Admin access required.');
     return;
   }
   const p = projects.find(x => x.id === projectId);
-  if (!p) { triggerNotificationToast('Project not found.'); return; }
+  if (!p) return;
 
   if (!confirm('Permanently delete "' + p.title + '"?')) return;
 
@@ -832,6 +864,85 @@ async function deleteProject(projectId) {
   document.getElementById('projectProfileModal').classList.remove('active');
   rebuildApplicationDOMViews();
   triggerNotificationToast('✓ Project deleted.');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SECTION 10: PROJECT OUTPUT SUBMISSION
+// ═══════════════════════════════════════════════════════════════════════
+
+function openProjectSubmissionModal(projectId) {
+  const p = projects.find(x => x.id === projectId);
+  if (!p) return;
+  activeProfileId = projectId;
+
+  document.getElementById('projectSubModalCategory').innerText = 'PROJECT OUTPUT · ' + (p.category || '');
+  document.getElementById('projectSubModalTitle').innerText = p.title;
+
+  const body = document.getElementById('projectSubModalBody');
+  const footer = document.getElementById('projectSubModalFooter');
+
+  body.innerHTML =
+    '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Project</span><div style="margin-top:0.25rem;font-size:0.95rem;">' + p.title + '</div></div>' +
+    '<div><label class="form-label">Your Output / Report</label><textarea class="form-input" id="projectSubText" rows="6" placeholder="Describe the output of your work on this project..." style="font-family:var(--font-body); resize:vertical;">' + (p.submission_text || '') + '</textarea></div>' +
+    '<div><label class="form-label">Attach File (optional)</label><input type="file" id="projectSubFile" class="form-input" style="padding:0.5rem;" accept=".pdf,.doc,.docx,.txt,.jpg,.png,.zip"></div>' +
+    '<div style="font-size:0.75rem;color:var(--text-muted);">Submitting as <b>' + currentUser.name + '</b></div>';
+
+  footer.innerHTML =
+    '<button class="btn btn-ghost" data-close="projectSubmissionModal">Cancel</button>' +
+    '<button class="btn btn-primary" id="projectSubConfirmBtn">📤 Submit Output</button>';
+
+  document.getElementById('projectSubConfirmBtn').onclick = () => submitProjectOutput(projectId);
+
+  document.getElementById('projectSubmissionModal').classList.add('active');
+}
+
+async function submitProjectOutput(projectId) {
+  const p = projects.find(x => x.id === projectId);
+  if (!p) return;
+
+  const text = document.getElementById('projectSubText').value.trim();
+  const fileInput = document.getElementById('projectSubFile');
+
+  if (!text && (!fileInput || !fileInput.files[0])) {
+    triggerNotificationToast('Please provide output or attach a file.');
+    return;
+  }
+
+  let fileData = null;
+  if (fileInput && fileInput.files[0]) {
+    const file = fileInput.files[0];
+    if (file.size > 5 * 1024 * 1024) { triggerNotificationToast('File too large (max 5 MB).'); return; }
+    fileData = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  const updates = {
+    submission_text: text,
+    submission_file: fileData || p.submission_file || null,
+    submitted_by: currentUser.name,
+    submitted_at: new Date().toISOString()
+  };
+
+  if (supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient.from('projects').update(updates).eq('id', p.id).select();
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Update blocked.');
+    } catch (err) { triggerNotificationToast('Error: ' + err.message); return; }
+  }
+
+  Object.assign(p, updates);
+  await logAudit('submit_project_output', 'project', p.id, p.title, 'Submitted by ' + currentUser.name);
+  await dispatchPing(currentUser.name, 'ALL', '📤 ' + currentUser.name + ' submitted output for: "' + p.title + '"');
+
+  flushCachedCollections();
+  document.getElementById('projectSubmissionModal').classList.remove('active');
+  document.getElementById('projectProfileModal').classList.remove('active');
+  rebuildApplicationDOMViews();
+  triggerNotificationToast('✓ Output submitted.');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1006,7 +1117,7 @@ function generateAnnouncementsStream() {
     node.className = 'announcement-node' + (isPingedToMe ? ' pinged' : '');
     node.innerHTML =
       (canDelete ? '<button class="announcement-delete-btn" title="Delete" data-ann-id="' + ann.id + '">✕</button>' : '') +
-      '<div class="announcement-meta"><span class="announcement-badge-alert">' + (isBroadcastAll ? 'NEWS FLASH' : 'DIRECT PING') + '</span><span>By <b>' + ann.sender + '</b></span><span>•</span><span>' + ann.timestamp + '</span></div>' +
+      '<div class="announcement-meta"><span class="announcement-badge-alert">' + (isBroadcastAll ? 'ANNOUNCEMENT' : 'DIRECT MESSAGE') + '</span><span>From <b>' + ann.sender + '</b></span><span>•</span><span>' + ann.timestamp + '</span></div>' +
       '<div class="announcement-body">' + ann.text + '</div>';
     container.appendChild(node);
   });
@@ -1024,7 +1135,7 @@ function generateAnnouncementsStream() {
 }
 
 async function deleteAnnouncement(annId) {
-  if (!confirm('Delete this announcement?')) return;
+  if (!confirm('Delete this message?')) return;
 
   if (String(annId).startsWith('remote-') && supabaseClient) {
     const remoteId = parseInt(String(annId).replace('remote-', ''), 10);
@@ -1038,10 +1149,10 @@ async function deleteAnnouncement(annId) {
   }
 
   announcements = announcements.filter(a => String(a.id) !== String(annId));
-  await logAudit('delete_announcement', 'announcement', annId, 'Announcement', 'Removed from stream');
+  await logAudit('delete_announcement', 'announcement', annId, 'Message', 'Removed from stream');
   flushCachedCollections();
   generateAnnouncementsStream();
-  triggerNotificationToast('Announcement deleted.');
+  triggerNotificationToast('Message deleted.');
 }
 
 function generateStaffDirectory() {
@@ -1050,7 +1161,7 @@ function generateStaffDirectory() {
   container.innerHTML = '';
 
   if (registeredUsersDB.length === 0) {
-    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem;">No personnel loaded.</div>';
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem;">No members loaded.</div>';
     return;
   }
 
@@ -1064,7 +1175,7 @@ function generateStaffDirectory() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 13: DEPLOYMENTS (Multi-select reporters)
+//  SECTION 13: FIELD OPERATIONS
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateDeploymentsGrid() {
@@ -1076,7 +1187,7 @@ function generateDeploymentsGrid() {
   const isAdmin = currentUser && currentUser.role === 'ADMIN';
 
   if (visible.length === 0) {
-    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No deployments yet. Click "+ Deploy Team" to send someone out.</div>';
+    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No field operations yet. Click "+ New Field Operation" to send someone out.</div>';
     return;
   }
 
@@ -1086,13 +1197,14 @@ function generateDeploymentsGrid() {
     card.className = 'card card-interactive';
     card.innerHTML =
       '<span class="priority-flag priority-' + d.priority + '">' + d.priority + '</span>' +
-      '<div class="card-category">DEPLOYMENT</div>' +
+      '<div class="card-category">FIELD OPERATION</div>' +
       '<div class="card-title">' + d.title + '</div>' +
       (d.location ? '<div style="font-size:0.82rem;color:var(--text-muted);">📍 ' + d.location + '</div>' : '') +
-      '<div style="font-size:0.85rem;color:var(--text-muted);">👥 ' + reporters.length + ' reporter(s): <b>' + reporters.join(', ') + '</b></div>' +
+      '<div style="font-size:0.85rem;color:var(--text-muted);">👥 ' + reporters.length + ' member(s): <b>' + reporters.join(', ') + '</b></div>' +
       (d.description ? '<div style="font-size:0.8rem;color:var(--text-muted); white-space:pre-line; line-height:1.5;">' + d.description.substring(0, 120) + (d.description.length > 120 ? '…' : '') + '</div>' : '') +
-      '<div class="card-actions"><button class="card-action-btn deployment-view-btn" data-deployment-id="' + d.id + '">📡 View Hub</button></div>' +
-      (isAdmin ? '<div class="card-action-row"><button class="card-action-btn archive-btn" data-deployment-archive="' + d.id + '">🗄 Archive</button></div>' : '');
+      '<div class="card-actions"><button class="card-action-btn deployment-view-btn" data-deployment-id="' + d.id + '">📡 View Details</button></div>' +
+      (isAdmin ? '<div class="card-action-row"><button class="card-action-btn archive-btn" data-deployment-archive="' + d.id + '">🗄 Archive</button></div>' : '') +
+      formatCreatedBy({ creator: d.createdBy, created_at: d.created_at });
     container.appendChild(card);
   });
 
@@ -1115,12 +1227,12 @@ function populateReporterCheckboxes() {
   const staffUsers = registeredUsersDB.filter(u => u.role === 'STAFF' || u.role === 'ADMIN');
 
   if (staffUsers.length === 0) {
-    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">No accounts available. Create users first.</div>';
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">No members available. Create accounts first.</div>';
     return;
   }
 
   container.innerHTML = staffUsers.map(u =>
-    '<label style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem; border-radius:6px; cursor:pointer; transition:background 0.15s;">' +
+    '<label style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem; border-radius:6px; cursor:pointer;">' +
       '<input type="checkbox" value="' + u.name + '" style="width:18px; height:18px; accent-color:var(--accent-light); cursor:pointer;">' +
       '<div style="display:flex; align-items:center; gap:0.5rem; flex:1;">' +
         '<div class="staff-avatar-mini">' + (u.code || '??') + '</div>' +
@@ -1143,36 +1255,36 @@ function openDeploymentProfile(deploymentId) {
   const isAdmin = currentUser.role === 'ADMIN';
   const reporters = (d.reporter || '').split(',').map(r => r.trim()).filter(r => r);
 
-  document.getElementById('deploymentModalCategory').innerText = 'DEPLOYMENT · ' + d.priority;
+  document.getElementById('deploymentModalCategory').innerText = 'FIELD OPERATION · ' + d.priority;
   document.getElementById('deploymentModalTitle').innerText = d.title;
 
   const body = document.getElementById('deploymentModalBody');
   body.innerHTML =
     (d.location ? '<div><span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">📍 Location</span><div style="margin-top:0.25rem; font-size:0.95rem;">' + d.location + '</div></div>' : '') +
-    '<div><span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">👥 Deployed Reporters (' + reporters.length + ')</span>' +
+    '<div><span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">👥 Assigned Members (' + reporters.length + ')</span>' +
       '<div style="margin-top:0.5rem; display:flex; flex-wrap:wrap; gap:0.5rem;">' +
         reporters.map(r => '<span style="background:rgba(76,110,73,0.25); border:1px solid rgba(76,110,73,0.5); color:#9ae6b4; padding:0.35rem 0.75rem; border-radius:20px; font-size:0.82rem; font-weight:600;">' + r + '</span>').join('') +
       '</div>' +
     '</div>' +
-    '<div><span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">📅 Deployed On</span><div style="margin-top:0.25rem; font-size:0.9rem;">' + (d.created_at ? new Date(d.created_at).toLocaleString('en-US') : '—') + '</div></div>' +
-    (d.description ? '<div><span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">📝 Mission Brief</span><div style="margin-top:0.4rem; font-size:0.9rem; white-space:pre-line; line-height:1.6; background:rgba(0,0,0,0.2); padding:0.75rem; border-radius:6px;">' + d.description + '</div></div>' : '') +
-    '<div style="font-size:0.75rem; color:var(--text-muted);">Deployed by <b>' + (d.createdBy || 'Admin') + '</b></div>';
+    '<div><span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">📅 Created</span><div style="margin-top:0.25rem; font-size:0.9rem;">' + (d.created_at ? new Date(d.created_at).toLocaleString('en-US') : '—') + '</div></div>' +
+    (d.description ? '<div><span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">📝 Instructions</span><div style="margin-top:0.4rem; font-size:0.9rem; white-space:pre-line; line-height:1.6; background:rgba(0,0,0,0.2); padding:0.75rem; border-radius:6px;">' + d.description + '</div></div>' : '') +
+    '<div style="font-size:0.75rem; color:var(--text-muted);">Created by <b>' + (d.createdBy || 'Admin') + '</b></div>';
 
   const actions = document.getElementById('deploymentModalActions');
   actions.innerHTML =
-    (isAdmin ? '<button class="btn btn-ghost" id="pingDeployBtn" style="color:var(--accent-light);">⚡ Ping All Reporters</button>' : '') +
+    (isAdmin ? '<button class="btn btn-ghost" id="pingDeployBtn" style="color:var(--accent-light);">🔔 Notify All</button>' : '') +
     (isAdmin ? '<button class="btn btn-ghost" id="archiveDeployBtn" style="color:var(--warning);">🗄 Archive</button>' : '');
 
   if (isAdmin) {
     const pingBtn = document.getElementById('pingDeployBtn');
     if (pingBtn) pingBtn.addEventListener('click', async () => {
-      if (reporters.length === 0) { triggerNotificationToast('No reporters assigned.'); return; }
+      if (reporters.length === 0) { triggerNotificationToast('No members assigned.'); return; }
       for (const r of reporters) {
         await dispatchPing(currentUser.name, r,
-          '📡 Deployment update: "' + d.title + '" — ' + (d.location || 'Location TBD'));
+          '📡 Update on "' + d.title + '" — ' + (d.location || 'Location TBD'));
       }
-      await logAudit('ping_deployment', 'deployment', d.id, d.title, 'Pinged ' + reporters.length + ' reporter(s)');
-      triggerNotificationToast('✓ Pinged ' + reporters.length + ' reporter(s).');
+      await logAudit('notify_deployment', 'deployment', d.id, d.title, 'Notified ' + reporters.length + ' member(s)');
+      triggerNotificationToast('✓ Notified ' + reporters.length + ' member(s).');
     });
     const archiveBtn = document.getElementById('archiveDeployBtn');
     if (archiveBtn) archiveBtn.addEventListener('click', () => archiveDeployment(d.id));
@@ -1183,13 +1295,13 @@ function openDeploymentProfile(deploymentId) {
 
 async function archiveDeployment(deploymentId) {
   if (!currentUser || currentUser.role !== 'ADMIN') {
-    triggerNotificationToast('Admin clearance required.');
+    triggerNotificationToast('Admin access required.');
     return;
   }
   const d = deployments.find(x => x.id === deploymentId);
-  if (!d) { triggerNotificationToast('Deployment not found.'); return; }
+  if (!d) { triggerNotificationToast('Operation not found.'); return; }
 
-  if (!confirm('Archive this deployment?')) return;
+  if (!confirm('Archive this operation?')) return;
 
   if (supabaseClient) {
     try {
@@ -1205,15 +1317,15 @@ async function archiveDeployment(deploymentId) {
 
   d.archived = true;
   await logAudit('archive_deployment', 'deployment', d.id, d.title,
-    'Deployed reporters: ' + (d.reporter || '—'));
+    'Assigned members: ' + (d.reporter || '—'));
   flushCachedCollections();
   document.getElementById('deploymentProfileModal').classList.remove('active');
   generateDeploymentsGrid();
-  triggerNotificationToast('✓ Deployment archived.');
+  triggerNotificationToast('✓ Operation archived.');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 14: ASSIGNMENTS WITH SUBMISSIONS
+//  SECTION 14: ASSIGNED TASKS
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateAssignmentsGrid() {
@@ -1225,7 +1337,7 @@ function generateAssignmentsGrid() {
   const isAdmin = currentUser && currentUser.role === 'ADMIN';
 
   if (visible.length === 0) {
-    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No assignments yet.</div>';
+    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No tasks yet.</div>';
     return;
   }
 
@@ -1243,7 +1355,7 @@ function generateAssignmentsGrid() {
     let actionBtn = '';
     if (canSubmit) {
       if (a.status === 'PENDING') {
-        actionBtn = '<button class="card-action-btn" data-submit-id="' + a.id + '" style="background:rgba(76,110,73,0.3); color:#9ae6b4; border-color:rgba(76,110,73,0.6);">📤 Answer &amp; Submit</button>';
+        actionBtn = '<button class="card-action-btn" data-submit-id="' + a.id + '" style="background:rgba(76,110,73,0.3); color:#9ae6b4; border-color:rgba(76,110,73,0.6);">📤 Submit Work</button>';
       } else {
         actionBtn = '<button class="card-action-btn" data-submit-id="' + a.id + '">👁 View Submission</button>';
       }
@@ -1255,12 +1367,12 @@ function generateAssignmentsGrid() {
         statusBadge +
       '</div>' +
       (a.description ? '<div style="font-size:0.82rem;color:var(--text-muted); white-space:pre-line; line-height:1.5;">' + a.description + '</div>' : '') +
-      '<div style="font-size:0.85rem;color:var(--text-muted);">👤 Assignee: <b>' + (a.assignee || '—') + '</b></div>' +
+      '<div style="font-size:0.85rem;color:var(--text-muted);">👤 Assigned to: <b>' + (a.assignee || '—') + '</b></div>' +
       (a.due_date ? '<div style="font-size:0.8rem;color:var(--text-muted);">📅 Due: ' + a.due_date + '</div>' : '') +
-      (a.created_by ? '<div style="font-size:0.72rem;color:var(--text-muted);">Assigned by ' + a.created_by + '</div>' : '') +
       (a.submitted_by ? '<div style="font-size:0.78rem; color:#9ae6b4;">📎 Submitted by ' + a.submitted_by + ' on ' + (a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—') + '</div>' : '') +
       (actionBtn ? '<div class="card-action-row">' + actionBtn + '</div>' : '') +
-      (isAdmin && a.status !== 'ARCHIVED' ? '<div class="card-action-row"><button class="card-action-btn archive-btn" data-asg-archive="' + a.id + '">🗄 Archive</button></div>' : '');
+      (isAdmin && a.status !== 'ARCHIVED' ? '<div class="card-action-row"><button class="card-action-btn archive-btn" data-asg-archive="' + a.id + '">🗄 Archive</button></div>' : '') +
+      formatCreatedBy({ creator: a.created_by, created_at: a.created_at });
     container.appendChild(card);
   });
 
@@ -1273,6 +1385,34 @@ function generateAssignmentsGrid() {
   });
 }
 
+function populateAssigneeRadios() {
+  const container = document.getElementById('assigneeRadioList');
+  if (!container) return;
+
+  const staffUsers = registeredUsersDB.filter(u => u.role === 'STAFF' || u.role === 'ADMIN');
+
+  if (staffUsers.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">No members available. Create accounts first.</div>';
+    return;
+  }
+
+  container.innerHTML = staffUsers.map((u, idx) =>
+    '<label style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem; border-radius:6px; cursor:pointer;">' +
+      '<input type="radio" name="assignee" value="' + u.name + '" ' + (idx === 0 ? 'checked' : '') + ' style="width:18px; height:18px; accent-color:var(--accent-light); cursor:pointer;">' +
+      '<div style="display:flex; align-items:center; gap:0.5rem; flex:1;">' +
+        '<div class="staff-avatar-mini">' + (u.code || '??') + '</div>' +
+        '<span style="font-weight:600; font-size:0.9rem;">' + u.name + '</span>' +
+        '<span style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase;">' + u.role + '</span>' +
+      '</div>' +
+    '</label>'
+  ).join('');
+}
+
+function openAssignmentModal() {
+  populateAssigneeRadios();
+  document.getElementById('addAssignmentModal').classList.add('active');
+}
+
 function openSubmissionModal(assignmentId) {
   const a = assignments.find(x => x.id === assignmentId);
   if (!a) return;
@@ -1283,7 +1423,7 @@ function openSubmissionModal(assignmentId) {
   const canSubmit = (isAssignee || isAdmin) && a.status === 'PENDING';
   const canReview = isAdmin && a.status === 'SUBMITTED';
 
-  document.getElementById('submissionModalCategory').innerText = 'ASSIGNMENT · ' + (a.priority || 'MEDIUM');
+  document.getElementById('submissionModalCategory').innerText = 'TASK · ' + (a.priority || 'MEDIUM');
   document.getElementById('submissionModalTitle').innerText = a.title;
 
   const body = document.getElementById('submissionModalBody');
@@ -1291,27 +1431,27 @@ function openSubmissionModal(assignmentId) {
 
   if (canSubmit) {
     body.innerHTML =
-      (a.description ? '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Instruction</span><div style="margin-top:0.25rem;font-size:0.9rem;white-space:pre-line;line-height:1.5;">' + a.description + '</div></div>' : '') +
-      '<div><label class="form-label">Your Answer / Output Report</label><textarea class="form-input" id="submissionText" rows="6" placeholder="Describe your findings, sources, angle, and next steps..." style="font-family:var(--font-body); resize:vertical;"></textarea></div>' +
+      (a.description ? '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Description</span><div style="margin-top:0.25rem;font-size:0.9rem;white-space:pre-line;line-height:1.5;">' + a.description + '</div></div>' : '') +
+      '<div><label class="form-label">Your Work / Report</label><textarea class="form-input" id="submissionText" rows="6" placeholder="Describe your progress, findings, or next steps..." style="font-family:var(--font-body); resize:vertical;"></textarea></div>' +
       '<div><label class="form-label">Attach File (optional)</label><input type="file" id="submissionFile" class="form-input" style="padding:0.5rem;" accept=".pdf,.doc,.docx,.txt,.jpg,.png,.zip"></div>' +
       '<div style="font-size:0.75rem;color:var(--text-muted);">Submitting as <b>' + currentUser.name + '</b></div>';
     footer.innerHTML =
       '<button class="btn btn-ghost" data-close="assignmentSubmissionModal">Cancel</button>' +
-      '<button class="btn btn-primary" id="confirmSubmitBtn">📤 Mark as Submitted</button>';
+      '<button class="btn btn-primary" id="confirmSubmitBtn">📤 Submit Task</button>';
 
     document.getElementById('confirmSubmitBtn').addEventListener('click', submitAssignment);
   } else {
     body.innerHTML =
       '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Submitted By</span><div style="margin-top:0.25rem;font-size:0.95rem;">' + (a.submitted_by || '—') + '</div></div>' +
       '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Submitted At</span><div style="margin-top:0.25rem;font-size:0.9rem;">' + (a.submitted_at ? new Date(a.submitted_at).toLocaleString() : '—') + '</div></div>' +
-      '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Answer</span><div style="margin-top:0.4rem;font-size:0.9rem;white-space:pre-line;line-height:1.6;background:rgba(0,0,0,0.2);padding:0.75rem;border-radius:6px;">' + (a.submission_text || 'No text submitted.') + '</div></div>' +
+      '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Work Submitted</span><div style="margin-top:0.4rem;font-size:0.9rem;white-space:pre-line;line-height:1.6;background:rgba(0,0,0,0.2);padding:0.75rem;border-radius:6px;">' + (a.submission_text || 'No text submitted.') + '</div></div>' +
       (a.submission_file ? '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Attached File</span><div style="margin-top:0.4rem;"><a href="' + a.submission_file + '" download="submission" class="btn btn-ghost" style="font-size:0.8rem;text-decoration:none;">⬇ Download Attachment</a></div></div>' : '') +
       (a.review_notes ? '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Admin Review</span><div style="margin-top:0.4rem;font-size:0.85rem;">' + a.review_notes + '</div></div>' : '');
 
     let footerHtml = '<button class="btn btn-ghost" data-close="assignmentSubmissionModal">Close</button>';
     if (canReview) {
-      footerHtml = '<button class="btn btn-ghost" id="rejectSubmissionBtn" style="color:var(--warning);">↩ Send Back for Revision</button>' +
-                   '<button class="btn btn-primary" id="approveSubmissionBtn">✓ Approve Submission</button>';
+      footerHtml = '<button class="btn btn-ghost" id="rejectSubmissionBtn" style="color:var(--warning);">↩ Send Back</button>' +
+                   '<button class="btn btn-primary" id="approveSubmissionBtn">✓ Approve</button>';
     }
     footer.innerHTML = footerHtml;
 
@@ -1332,7 +1472,7 @@ async function submitAssignment() {
   const fileInput = document.getElementById('submissionFile');
 
   if (!text && (!fileInput || !fileInput.files[0])) {
-    triggerNotificationToast('Please provide an answer or attach a file.');
+    triggerNotificationToast('Please provide work or attach a file.');
     return;
   }
 
@@ -1370,14 +1510,14 @@ async function submitAssignment() {
   }
 
   Object.assign(a, updates);
-  await logAudit('submit_assignment', 'assignment', a.id, a.title, 'Submitted by ' + currentUser.name);
+  await logAudit('submit_task', 'assignment', a.id, a.title, 'Submitted by ' + currentUser.name);
   await dispatchPing(currentUser.name, a.created_by || 'ALL',
     '📤 ' + currentUser.name + ' submitted: "' + a.title + '"');
 
   flushCachedCollections();
   document.getElementById('assignmentSubmissionModal').classList.remove('active');
   generateAssignmentsGrid();
-  triggerNotificationToast('✓ Submission recorded.');
+  triggerNotificationToast('✓ Task submitted.');
 }
 
 async function reviewSubmission(approved) {
@@ -1411,11 +1551,11 @@ async function reviewSubmission(approved) {
   flushCachedCollections();
   document.getElementById('assignmentSubmissionModal').classList.remove('active');
   generateAssignmentsGrid();
-  triggerNotificationToast(approved ? '✓ Submission approved.' : '↩ Submission returned.');
+  triggerNotificationToast(approved ? '✓ Approved.' : '↩ Returned.');
 }
 
 async function archiveAssignment(asgId) {
-  if (!confirm('Archive this assignment?')) return;
+  if (!confirm('Archive this task?')) return;
   const a = assignments.find(x => x.id === asgId);
   if (!a) return;
 
@@ -1435,11 +1575,11 @@ async function archiveAssignment(asgId) {
   await logAudit('archive_assignment', 'assignment', a.id, a.title, 'Archived');
   flushCachedCollections();
   generateAssignmentsGrid();
-  triggerNotificationToast('Assignment archived.');
+  triggerNotificationToast('Task archived.');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 15: EVENTS & CALENDAR
+//  SECTION 15: EVENTS + CALENDAR
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateEventsTrackerChecklist() {
@@ -1448,7 +1588,7 @@ function generateEventsTrackerChecklist() {
   container.innerHTML = '';
 
   if (events.length === 0) {
-    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem;">No events scheduled.</div>';
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem;">No upcoming events.</div>';
     return;
   }
 
@@ -1486,14 +1626,87 @@ function generateDeadlineCalendarGrid() {
     cell.className = 'cal-cell';
     cell.innerHTML = '<div class="cal-num">' + day + '</div>';
     const dateStr = calendarYear + '-' + String(calendarMonth + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-    projects.filter(p => p.deadline === dateStr && !p.archived).forEach(p => {
+
+    const dayProjects = projects.filter(p => p.deadline === dateStr && !p.archived);
+    const dayTasks = assignments.filter(a => a.due_date === dateStr && !a.archived);
+    const dayEvents = events.filter(e => e.date === dateStr && !e.archived);
+    const totalItems = dayProjects.length + dayTasks.length + dayEvents.length;
+
+    if (totalItems > 0) cell.classList.add('has-tasks');
+
+    dayProjects.forEach(p => {
       const entry = document.createElement('div');
       entry.className = 'cal-entry';
-      entry.innerText = p.title;
+      entry.innerText = '📋 ' + p.title;
       cell.appendChild(entry);
     });
+    dayTasks.forEach(t => {
+      const entry = document.createElement('div');
+      entry.className = 'cal-entry';
+      entry.style.background = 'rgba(139, 92, 246, 0.4)';
+      entry.innerText = '🔔 ' + t.title;
+      cell.appendChild(entry);
+    });
+
+    cell.addEventListener('click', () => openCalendarDayModal(dateStr));
     container.appendChild(cell);
   }
+}
+
+function openCalendarDayModal(dateStr) {
+  const title = document.getElementById('calendarDayTitle');
+  const body = document.getElementById('calendarDayBody');
+  if (!title || !body) return;
+
+  const d = new Date(dateStr + 'T00:00:00');
+  title.innerText = '📅 ' + d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+  const dayProjects = projects.filter(p => p.deadline === dateStr && !p.archived);
+  const dayTasks = assignments.filter(a => a.due_date === dateStr && !a.archived);
+  const dayEvents = events.filter(e => e.date === dateStr && !e.archived);
+
+  let html = '';
+
+  if (dayProjects.length === 0 && dayTasks.length === 0 && dayEvents.length === 0) {
+    body.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:2rem;">No items scheduled on this date.</div>';
+    document.getElementById('calendarDayModal').classList.add('active');
+    return;
+  }
+
+  dayProjects.forEach(p => {
+    html += '<div class="cal-day-item">' +
+      '<div class="cal-item-title">📋 ' + p.title + '</div>' +
+      '<div class="cal-item-meta">' +
+        '<span>📁 Project</span>' +
+        '<span>Status: <b>' + (p.status || 'ACTIVE') + '</b></span>' +
+        '<span>Priority: <b>' + (p.priority || 'MEDIUM') + '</b></span>' +
+      '</div>' +
+      (p.reporter ? '<div class="cal-item-meta"><span>👤 Assigned to <b>' + p.reporter + '</b></span></div>' : '') +
+      (p.notes ? '<div class="cal-item-notes">' + p.notes + '</div>' : '') +
+    '</div>';
+  });
+
+  dayTasks.forEach(t => {
+    html += '<div class="cal-day-item" style="border-left-color:#8b5cf6;">' +
+      '<div class="cal-item-title">🔔 ' + t.title + '</div>' +
+      '<div class="cal-item-meta">' +
+        '<span>👤 Task</span>' +
+        '<span>Assignee: <b>' + (t.assignee || '—') + '</b></span>' +
+        '<span>Status: <b>' + (t.status || 'PENDING') + '</b></span>' +
+      '</div>' +
+      (t.description ? '<div class="cal-item-notes">' + t.description + '</div>' : '') +
+    '</div>';
+  });
+
+  dayEvents.forEach(e => {
+    html += '<div class="cal-day-item" style="border-left-color:#fbd38d;">' +
+      '<div class="cal-item-title">📌 ' + e.name + '</div>' +
+      '<div class="cal-item-meta"><span>Event' + (e.completed ? ' • ✅ Completed' : '') + '</span></div>' +
+    '</div>';
+  });
+
+  body.innerHTML = html;
+  document.getElementById('calendarDayModal').classList.add('active');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1552,7 +1765,7 @@ function openGeoMap(log) {
   const info = document.getElementById('geoMapReporterInfo');
   info.innerHTML =
     '<div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center;">' +
-      '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">REPORTER</span><div style="font-weight:700;">' + log.reporter + '</div></div>' +
+      '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">NAME</span><div style="font-weight:700;">' + log.reporter + '</div></div>' +
       '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">DATE & TIME</span><div style="font-weight:600;">' + log.date + ' · ' + log.time + '</div></div>' +
       '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">LOCATION</span><div style="font-weight:600;">' + (log.location || '—') + '</div></div>' +
       '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">ACCURACY</span><div style="font-weight:600;">±' + log.accuracy + 'm</div></div>' +
@@ -1626,7 +1839,7 @@ async function processFieldTelemetryMarking() {
   if (!navigator.geolocation) {
     triggerNotificationToast('Geolocation not supported.');
     btn.disabled = false;
-    btn.innerText = '📍 Timestamp Geo-Presence Profile';
+    btn.innerText = '📍 Check In Now';
     return;
   }
 
@@ -1663,7 +1876,7 @@ async function processFieldTelemetryMarking() {
       } catch (err) {
         triggerNotificationToast('Backend error: ' + err.message);
         btn.disabled = false;
-        btn.innerText = '📍 Timestamp Geo-Presence Profile';
+        btn.innerText = '📍 Check In Now';
         return;
       }
     }
@@ -1677,7 +1890,7 @@ async function processFieldTelemetryMarking() {
     triggerNotificationToast('Attendance logged: ' + entry.time);
   }, () => {
     btn.disabled = false;
-    btn.innerText = '📍 Timestamp Geo-Presence Profile';
+    btn.innerText = '📍 Check In Now';
     triggerNotificationToast('Location access denied.');
   }, { enableHighAccuracy: true, timeout: 12000 });
 }
@@ -1697,7 +1910,7 @@ function initAttendancePage() {
 
 async function clearAttendanceLog() {
   if (currentUser.role !== 'ADMIN') {
-    triggerNotificationToast('Admin clearance required.');
+    triggerNotificationToast('Admin access required.');
     return;
   }
   if (!confirm('Clear ALL attendance records?')) return;
@@ -1922,8 +2135,8 @@ function generateActivitySummaryReport() {
   const summaryText =
     '🗓 ' + now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) + '\n\n' +
     '📊 PROJECTS\n     Active: ' + activeProjects.length + '    Archived: ' + archivedProjects.length + '\n     Overdue: ' + overdue.length + '\n\n' +
-    '📡 DEPLOYMENTS\n     Active: ' + activeDeployments + '\n\n' +
-    '📋 ASSIGNMENTS\n     Pending: ' + pendingAssignments + '    Awaiting Review: ' + submittedAssignments + '\n\n' +
+    '📡 FIELD OPS\n     Active: ' + activeDeployments + '\n\n' +
+    '📋 TASKS\n     Pending: ' + pendingAssignments + '    Awaiting Review: ' + submittedAssignments + '\n\n' +
     '👥 TEAM\n     Staff: ' + staffCount + '    Admins: ' + adminCount + '\n\n' +
     '📍 FIELD ACTIVITY\n     Check-ins today: ' + todayCheckins.length + '\n';
 
@@ -1940,7 +2153,7 @@ function generateActivitySummaryReport() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 20: SOURCES
+//  SECTION 20: WORK ASSIGNED (replaces "Sources")
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateSourcesGrid() {
@@ -1948,20 +2161,61 @@ function generateSourcesGrid() {
   if (!container) return;
   container.innerHTML = '';
 
-  const subset = sources.filter(s =>
-    (s.name || '').toLowerCase().includes(sourceSearchQuery.toLowerCase()) ||
-    (s.beat || '').toLowerCase().includes(sourceSearchQuery.toLowerCase())
-  );
+  const teamMembers = registeredUsersDB.filter(u => u.role === 'STAFF' || u.role === 'ADMIN');
 
-  if (subset.length === 0) {
-    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No sources in vault.</div>';
+  const filtered = teamMembers.filter(u => {
+    if (!sourceSearchQuery) return true;
+    return u.name.toLowerCase().includes(sourceSearchQuery.toLowerCase());
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No team members found.</div>';
     return;
   }
 
-  subset.forEach(s => {
+  filtered.forEach(member => {
+    const memberProjects = projects.filter(p => !p.archived && (p.reporter || '').split(',').map(s => s.trim()).includes(member.name));
+    const memberTasks = assignments.filter(a => !a.archived && (a.assignee || '').trim() === member.name.trim());
+    const memberDeployments = deployments.filter(d => !d.archived && (d.reporter || '').split(',').map(s => s.trim()).includes(member.name));
+
     const card = document.createElement('div');
-    card.className = 'card source-card';
-    card.innerHTML = '<div class="card-title">' + s.name + '</div><div style="font-size:0.85rem;color:var(--text-muted);">Beat: <b>' + (s.beat || 'Unassigned') + '</b></div><div style="font-size:0.82rem;color:var(--accent-light);">' + (s.contact || 'No contact') + '</div>';
+    card.className = 'card';
+
+    const projectsHtml = memberProjects.length > 0
+      ? memberProjects.map(p => '<div style="padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.82rem;">📋 <b>' + p.title + '</b> <span style="color:var(--text-muted);">(' + (p.status || 'ACTIVE') + ')</span></div>').join('')
+      : '<div style="font-size:0.78rem; color:var(--text-muted);">— No projects</div>';
+
+    const tasksHtml = memberTasks.length > 0
+      ? memberTasks.map(t => '<div style="padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.82rem;">🔔 <b>' + t.title + '</b> <span style="color:var(--text-muted);">(' + (t.status || 'PENDING') + ')</span></div>').join('')
+      : '<div style="font-size:0.78rem; color:var(--text-muted);">— No tasks</div>';
+
+    const deploymentsHtml = memberDeployments.length > 0
+      ? memberDeployments.map(d => '<div style="padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.82rem;">📡 <b>' + d.title + '</b> <span style="color:var(--text-muted);">(' + (d.location || 'Location TBD') + ')</span></div>').join('')
+      : '<div style="font-size:0.78rem; color:var(--text-muted);">— No field ops</div>';
+
+    const totalLoad = memberProjects.length + memberTasks.length + memberDeployments.length;
+
+    card.innerHTML =
+      '<div style="display:flex; align-items:center; gap:0.75rem;">' +
+        '<div class="staff-avatar-mini" style="width:38px; height:38px; font-size:0.9rem;">' + (member.code || '??') + '</div>' +
+        '<div style="flex:1;">' +
+          '<div class="card-title" style="font-size:1.1rem; margin:0;">' + member.name + '</div>' +
+          '<div style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; font-weight:700;">' + member.role + ' • ' + totalLoad + ' active item(s)</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="border-top:1px solid var(--border-color); padding-top:0.5rem; margin-top:0.5rem;">' +
+        '<div style="font-size:0.72rem; font-weight:800; color:var(--accent-light); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:0.3rem;">📋 Projects (' + memberProjects.length + ')</div>' +
+        projectsHtml +
+      '</div>' +
+      '<div style="border-top:1px solid var(--border-color); padding-top:0.5rem;">' +
+        '<div style="font-size:0.72rem; font-weight:800; color:#8b5cf6; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:0.3rem;">🔔 Tasks (' + memberTasks.length + ')</div>' +
+        tasksHtml +
+      '</div>' +
+      '<div style="border-top:1px solid var(--border-color); padding-top:0.5rem;">' +
+        '<div style="font-size:0.72rem; font-weight:800; color:#fbd38d; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:0.3rem;">📡 Field Ops (' + memberDeployments.length + ')</div>' +
+        deploymentsHtml +
+      '</div>';
+
     container.appendChild(card);
   });
 }
@@ -1969,7 +2223,7 @@ function generateSourcesGrid() {
 async function clearAllSources() {
   if (currentUser.role !== 'ADMIN') return;
   if (sources.length === 0) { triggerNotificationToast('No sources.'); return; }
-  if (!confirm('Delete ALL ' + sources.length + ' sources?')) return;
+  if (!confirm('Delete ALL ' + sources.length + ' contacts?')) return;
   if (!confirm('Absolutely sure?')) return;
 
   if (supabaseClient) {
@@ -1983,10 +2237,10 @@ async function clearAllSources() {
   }
 
   sources = [];
-  await logAudit('clear_sources', 'sources', '', 'Source Vault', 'All cleared');
+  await logAudit('clear_sources', 'sources', '', 'Contact Vault', 'All cleared');
   flushCachedCollections();
   generateSourcesGrid();
-  triggerNotificationToast('✓ Source vault cleared.');
+  triggerNotificationToast('✓ Contact vault cleared.');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -2108,7 +2362,7 @@ async function refreshUsersFromBackend() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 22: AUDIT LOG VIEW
+//  SECTION 22: ACTIVITY LOG VIEW
 // ═══════════════════════════════════════════════════════════════════════
 
 function renderAuditLogTable() {
@@ -2127,7 +2381,7 @@ function renderAuditLogTable() {
   );
 
   if (subset.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="padding:3rem;text-align:center;color:var(--text-muted);">No audit entries.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="padding:3rem;text-align:center;color:var(--text-muted);">No activity entries.</td></tr>';
     return;
   }
 
@@ -2138,7 +2392,7 @@ function renderAuditLogTable() {
     const actionColors = {
       delete: '#fc8181', archive: '#fbd38d', create: '#9ae6b4',
       submit: '#90cdf4', approve: '#81e6d9', update: '#cbd5e1',
-      ping: '#a78bfa', clear: '#f43f5e', deny: '#f43f5e',
+      notify: '#a78bfa', ping: '#a78bfa', clear: '#f43f5e', deny: '#f43f5e',
       reject: '#f43f5e', request: '#fbd38d', restore: '#9ae6b4'
     };
     const key = Object.keys(actionColors).find(k => (e.action || '').toLowerCase().includes(k));
@@ -2246,7 +2500,7 @@ function generateNotificationBar() {
     }
     const pendingSubmissions = assignments.filter(a => a.status === 'SUBMITTED' && !a.archived).length;
     if (pendingSubmissions > 0) {
-      notices.push({ id: 'submissions-' + pendingSubmissions, type: 'info', icon: '📤', text: pendingSubmissions + ' assignment submission(s) awaiting review.' });
+      notices.push({ id: 'submissions-' + pendingSubmissions, type: 'info', icon: '📤', text: pendingSubmissions + ' task submission(s) awaiting review.' });
     }
   }
 
@@ -2255,7 +2509,7 @@ function generateNotificationBar() {
     currentUser.name.toLowerCase() === (a.assignee || '').toLowerCase()
   ).length;
   if (myAssignments > 0) {
-    notices.push({ id: 'my-assignments-' + myAssignments, type: 'info', icon: '🔔', text: myAssignments + ' assignment(s) assigned to you.' });
+    notices.push({ id: 'my-assignments-' + myAssignments, type: 'info', icon: '🔔', text: myAssignments + ' task(s) assigned to you.' });
   }
 
   const visible = notices.filter(n => !dismissedNoticeIds.includes(n.id));
@@ -2310,17 +2564,6 @@ function injectAdminClearButtons() {
     btn.textContent = '🗑 Clear Summaries';
     btn.addEventListener('click', clearActivitySummaries);
     actSumBadge.parentNode.insertBefore(btn, actSumBadge);
-  }
-
-  const addSourceBtn = document.getElementById('addSourceBtn');
-  if (addSourceBtn && !document.getElementById('clearSourcesBtn')) {
-    const btn = document.createElement('button');
-    btn.id = 'clearSourcesBtn';
-    btn.className = 'btn btn-ghost';
-    btn.style.cssText = 'font-size:0.8rem;color:var(--danger);border-color:rgba(229,62,62,0.3);margin-right:0.5rem;';
-    btn.textContent = '🗑 Clear Vault';
-    btn.addEventListener('click', clearAllSources);
-    addSourceBtn.parentNode.insertBefore(btn, addSourceBtn);
   }
 }
 
@@ -2457,7 +2700,7 @@ function initializeApp() {
         }
       } else { payload.id = Date.now(); }
 
-      projects.push(payload);
+      projects.push({ ...payload, created_at: new Date().toISOString() });
       await logAudit('create_project', 'project', payload.id, title,
         'Category: ' + category + ', Due: ' + deadline);
 
@@ -2472,43 +2715,6 @@ function initializeApp() {
   // Save user
   const saveUserBtn = document.getElementById('saveUserBtn');
   if (saveUserBtn) saveUserBtn.addEventListener('click', createNewUser);
-
-  // Save source
-  const saveSourceBtn = document.getElementById('saveSourceBtn');
-  if (saveSourceBtn) {
-    saveSourceBtn.addEventListener('click', async () => {
-      const name = document.getElementById('sourceName').value.trim();
-      const beat = document.getElementById('sourceBeat').value.trim();
-      const contact = document.getElementById('sourceContact').value.trim();
-      const reliability = document.getElementById('sourceReliability').value;
-      const notes = document.getElementById('sourceNotes').value.trim();
-      if (!name) return;
-
-      const payload = { name, beat, contact, reliability, notes, created_by: currentUser.name };
-
-      if (supabaseClient) {
-        try {
-          const { data, error } = await supabaseClient.from('sources').insert(payload).select().single();
-          if (error) throw error;
-          payload.id = data ? data.id : Date.now();
-        } catch (err) {
-          triggerNotificationToast('Backend error: ' + err.message);
-          return;
-        }
-      } else { payload.id = Date.now(); }
-
-      sources.push({ id: payload.id, name, beat, contact, reliability, notes, createdBy: payload.created_by });
-      await logAudit('create_source', 'source', payload.id, name, 'Beat: ' + beat);
-      flushCachedCollections();
-      generateSourcesGrid();
-      document.getElementById('addSourceModal').classList.remove('active');
-      document.getElementById('sourceName').value = '';
-      document.getElementById('sourceBeat').value = '';
-      document.getElementById('sourceContact').value = '';
-      document.getElementById('sourceNotes').value = '';
-      triggerNotificationToast('Source added.');
-    });
-  }
 
   // Notifications
   refreshNotificationPermissionUI();
@@ -2599,17 +2805,18 @@ function initializeApp() {
     });
   });
 
-  // Modal open (deployment handled separately)
+  // Special modal handlers
   const addBeatBtn = document.getElementById('addBeatBtn');
   if (addBeatBtn) addBeatBtn.addEventListener('click', openDeploymentModal);
+
+  const addAssignmentBtn = document.getElementById('addAssignmentBtn');
+  if (addAssignmentBtn) addAssignmentBtn.addEventListener('click', openAssignmentModal);
 
   const modalButtons = [
     { btnId: 'fabBtn', modalId: 'newProjectModal' },
     { btnId: 'addCalendarProjectBtn', modalId: 'newProjectModal' },
-    { btnId: 'addAssignmentBtn', modalId: 'addAssignmentModal' },
     { btnId: 'addEventBtn', modalId: 'addEventModal' },
     { btnId: 'addUserBtn', modalId: 'addUserModal' },
-    { btnId: 'addSourceBtn', modalId: 'addSourceModal' },
     { btnId: 'quickAddProjectBtn', modalId: 'newProjectModal' }
   ];
 
@@ -2635,11 +2842,11 @@ function initializeApp() {
       ).map(cb => cb.value);
 
       if (!title) {
-        triggerNotificationToast('Deployment title is required.');
+        triggerNotificationToast('Operation title is required.');
         return;
       }
       if (selected.length === 0) {
-        triggerNotificationToast('Select at least one reporter.');
+        triggerNotificationToast('Select at least one member.');
         return;
       }
 
@@ -2673,9 +2880,8 @@ function initializeApp() {
       });
 
       await logAudit('create_deployment', 'deployment', payload.id, title,
-        'Deployed ' + selected.length + ' reporter(s): ' + reporterString);
+        'Deployed ' + selected.length + ' member(s): ' + reporterString);
 
-      // Ping each selected reporter
       for (const reporter of selected) {
         await dispatchPing(currentUser.name, reporter,
           '📡 You have been deployed: "' + title + '" at ' + (location || 'Location TBD'));
@@ -2689,18 +2895,28 @@ function initializeApp() {
       document.getElementById('beatLocation').value = '';
       document.getElementById('beatDescription').value = '';
 
-      triggerNotificationToast('✓ Deployed. Pinged ' + selected.length + ' reporter(s).');
+      triggerNotificationToast('✓ Deployed. Notified ' + selected.length + ' member(s).');
     });
   }
 
-  // Save assignment
+  // Save assignment (radio-based assignee)
   const saveAssignmentBtn = document.getElementById('saveAssignmentBtn');
   if (saveAssignmentBtn) {
     saveAssignmentBtn.addEventListener('click', async () => {
       const title = document.getElementById('asgTitle').value.trim();
-      const assigneeRaw = document.getElementById('asgAssignee').value.trim();
-      const assignee = (assigneeRaw || 'General Desk').replace(/^@/, '');
-      if (!title) return;
+
+      // Read selected radio button
+      const selectedRadio = document.querySelector('#assigneeRadioList input[name="assignee"]:checked');
+      const assignee = selectedRadio ? selectedRadio.value : null;
+
+      if (!title) {
+        triggerNotificationToast('Task description is required.');
+        return;
+      }
+      if (!assignee) {
+        triggerNotificationToast('Please select an assignee.');
+        return;
+      }
 
       const payload = {
         title, assignee,
@@ -2727,22 +2943,22 @@ function initializeApp() {
         id: payload.id, ...payload,
         submission_text: '', submission_file: '',
         submitted_by: '', submitted_at: null,
-        reviewed_by: '', reviewed_at: null, review_notes: ''
+        reviewed_by: '', reviewed_at: null, review_notes: '',
+        created_at: new Date().toISOString()
       });
 
       await logAudit('create_assignment', 'assignment', payload.id, title,
         'Assigned to ' + assignee);
 
-      if (assignee && assignee.toLowerCase() !== 'general desk') {
-        await dispatchPing(currentUser.name, assignee, '🔔 New assignment: "' + title + '"');
+      if (assignee) {
+        await dispatchPing(currentUser.name, assignee, '🔔 New task assigned to you: "' + title + '"');
       }
 
       flushCachedCollections();
       generateAssignmentsGrid();
       document.getElementById('addAssignmentModal').classList.remove('active');
       document.getElementById('asgTitle').value = '';
-      document.getElementById('asgAssignee').value = '';
-      triggerNotificationToast('✓ Task dispatched to ' + assignee + '.');
+      triggerNotificationToast('✓ Task created for ' + assignee + '.');
     });
   }
 
@@ -2771,6 +2987,7 @@ function initializeApp() {
       await logAudit('create_event', 'event', payload.id, name, 'Date: ' + date);
       flushCachedCollections();
       generateEventsTrackerChecklist();
+      generateDeadlineCalendarGrid();
       document.getElementById('addEventModal').classList.remove('active');
       document.getElementById('evtName').value = '';
       triggerNotificationToast('Event added.');
@@ -2814,7 +3031,7 @@ function initializeApp() {
     });
   });
 
-  console.log('✅ JCompass initialized (v3.1)');
+  console.log('✅ JCompass initialized (v5.0)');
 }
 
 // ═══════════════════════════════════════════════════════════════════════

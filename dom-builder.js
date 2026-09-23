@@ -1,7 +1,7 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Dashboard DOM Builder
- *  Builds the entire dashboard UI at runtime. Loaded before app.js.
+ *  JCompass — Dashboard DOM Builder v5.0
+ *  Adds: Calendar day popup, Work Assigned page, Project submission modal
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
@@ -19,7 +19,7 @@
           <li class="nav-item" data-page="assignments"><span class="nav-icon">🔔</span><span class="nav-label">Task Assignments</span></li>
           <li class="nav-item" data-page="attend"><span class="nav-icon">📋</span><span class="nav-label">Attendance</span></li>
           <li class="nav-item" data-page="calendar"><span class="nav-icon">📅</span><span class="nav-label">Deadline Calendar</span></li>
-          <li class="nav-item" data-page="sources"><span class="nav-icon">🗃</span><span class="nav-label">Contacts</span></li>
+          <li class="nav-item" data-page="sources"><span class="nav-icon">👤</span><span class="nav-label">Work Assigned</span></li>
           <li class="nav-item admin-only-nav" data-page="users"><span class="nav-icon">👥</span><span class="nav-label">User Management</span></li>
           <li class="nav-item" data-page="archive"><span class="nav-icon">🗄</span><span class="nav-label">Archive</span></li>
           <li class="nav-item admin-only-nav" data-page="audit"><span class="nav-icon">📜</span><span class="nav-label">Activity Log</span></li>
@@ -247,7 +247,7 @@
           <h2 class="section-title">Task Deadline Calendar</h2>
           <button class="btn btn-primary" id="addCalendarProjectBtn">+ Add Project</button>
         </div>
-        <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Click any date to view details of scheduled tasks.</p>
+        <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Click any highlighted date to see the tasks scheduled that day.</p>
         <div class="calendar-header">
           <button class="cal-nav-btn" id="calPrevMonth">‹</button>
           <div class="cal-month-year" id="calMonthYear">August 2026</div>
@@ -258,12 +258,11 @@
 
       <div class="page" id="page-sources">
         <div class="section-header">
-          <h2 class="section-title">Contacts</h2>
-          <button class="btn btn-primary" id="addSourceBtn">+ Add Contact</button>
+          <h2 class="section-title">Work Assigned — Who's Doing What</h2>
         </div>
-        <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Private contact directory.</p>
+        <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Every team member and their current workload across projects, tasks, and field operations.</p>
         <div class="search-wrap" style="margin-top:0.75rem; margin-bottom:1rem;">
-          <input type="text" class="search-bar" id="sourceSearchInput" placeholder="Search contacts...">
+          <input type="text" class="search-bar" id="sourceSearchInput" placeholder="Search by team member name...">
         </div>
         <div class="grid" id="sourcesGrid"></div>
       </div>
@@ -450,32 +449,6 @@
       </div>
     </div>
 
-    <div class="modal-overlay" id="addSourceModal">
-      <div class="modal">
-        <div class="modal-header"><h2 class="modal-title">Add Contact</h2><button class="modal-close" data-close="addSourceModal">✕</button></div>
-        <div class="modal-body">
-          <label class="form-label">Contact Name</label>
-          <input class="form-input" id="sourceName" type="text" placeholder="e.g., John Smith">
-          <label class="form-label">Category</label>
-          <input class="form-input" id="sourceBeat" type="text" placeholder="e.g., Government, Business">
-          <label class="form-label">Contact Info</label>
-          <input class="form-input" id="sourceContact" type="text" placeholder="Email or phone">
-          <label class="form-label">Trust Level</label>
-          <select class="form-select" id="sourceReliability">
-            <option value="HIGH">🔴 High — Verified</option>
-            <option value="MEDIUM" selected>🟡 Medium — Usually accurate</option>
-            <option value="LOW">🟢 Low — Unverified</option>
-          </select>
-          <label class="form-label">Notes</label>
-          <textarea class="form-input" id="sourceNotes" rows="3" placeholder="Background info..." style="resize:vertical; font-family:var(--font-body);"></textarea>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-ghost" data-close="addSourceModal">Cancel</button>
-          <button class="btn btn-primary" id="saveSourceBtn">Save Contact</button>
-        </div>
-      </div>
-    </div>
-
     <div class="modal-overlay" id="projectProfileModal">
       <div class="modal" style="max-width:600px; width:95vw;">
         <div class="modal-header">
@@ -521,6 +494,12 @@
               <option value="PUBLISHED">Published</option>
             </select>
           </div>
+
+          <div id="profileSubmissionSection" style="border-top:1px solid var(--border-color); padding-top:1rem; display:flex; flex-direction:column; gap:0.75rem;">
+            <div class="card-category">📤 OUTPUT SUBMISSION</div>
+            <div id="profileSubmissionInfo" style="font-size:0.85rem; color:var(--text-muted);">No output submitted yet.</div>
+            <button class="btn btn-primary" id="profileSubmitOutputBtn" style="font-size:0.9rem;">📤 Submit Output</button>
+          </div>
         </div>
         <div class="modal-footer" style="justify-content:space-between;">
           <div id="profileStaffNotice" style="display:none; align-items:center; gap:0.6rem; font-size:0.8rem; color:var(--text-muted); background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:6px; padding:0.5rem 0.85rem; flex:1; margin-right:0.75rem;">
@@ -532,7 +511,7 @@
             <button class="btn btn-ghost" id="profileRequestArchiveBtn" style="display:none; color:var(--warning); border-color:rgba(221,107,32,0.4);">📤 Request Archive</button>
           </div>
           <div style="display:flex; gap:0.5rem; margin-left:0.5rem;">
-            <button class="btn btn-ghost" data-close="projectProfileModal">Cancel</button>
+            <button class="btn btn-ghost" data-close="projectProfileModal">Close</button>
             <button class="btn btn-primary" id="profileSaveBtn">💾 Save</button>
           </div>
         </div>
@@ -570,6 +549,20 @@
       </div>
     </div>
 
+    <div class="modal-overlay" id="projectSubmissionModal">
+      <div class="modal" style="max-width:600px; width:95vw;">
+        <div class="modal-header">
+          <div style="display:flex; flex-direction:column; gap:0.25rem;">
+            <div class="card-category" id="projectSubModalCategory">PROJECT OUTPUT</div>
+            <h2 class="modal-title" id="projectSubModalTitle">Project</h2>
+          </div>
+          <button class="modal-close" data-close="projectSubmissionModal">✕</button>
+        </div>
+        <div class="modal-body" id="projectSubModalBody" style="gap:1rem;"></div>
+        <div class="modal-footer" id="projectSubModalFooter"></div>
+      </div>
+    </div>
+
     <div class="modal-overlay" id="geoMapModal">
       <div class="modal" style="max-width:720px; width:95vw;">
         <div class="modal-header"><h2 class="modal-title">📍 Check-in Location</h2><button class="modal-close" data-close="geoMapModal">✕</button></div>
@@ -582,6 +575,19 @@
             <a id="geoMapOpenBtn" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size:0.82rem; text-decoration:none;">🌐 Open in Google Maps</a>
             <button class="btn btn-ghost" data-close="geoMapModal">Close</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="calendarDayModal">
+      <div class="modal" style="max-width:640px; width:95vw;">
+        <div class="modal-header">
+          <h2 class="modal-title" id="calendarDayTitle">Date</h2>
+          <button class="modal-close" data-close="calendarDayModal">✕</button>
+        </div>
+        <div class="modal-body" id="calendarDayBody" style="gap:1rem;"></div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" data-close="calendarDayModal">Close</button>
         </div>
       </div>
     </div>
