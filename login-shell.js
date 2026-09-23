@@ -1,12 +1,4 @@
-/**
- * Vercel Serverless Function — Login entry point
- * Returns the HTML shell as a string. UI is built client-side by login-dom.js.
- */
-module.exports = (req, res) => {
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
-
-  res.status(200).send(`<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -25,5 +17,4 @@ module.exports = (req, res) => {
   <script src="/login-dom.js"></script>
   <script src="/login.js"></script>
 </body>
-</html>`);
-};
+</html>

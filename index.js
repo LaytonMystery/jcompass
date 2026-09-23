@@ -1,12 +1,4 @@
-/**
- * Vercel Serverless Function — Dashboard entry point
- * Returns the HTML shell as a string. All UI is built client-side by dom-builder.js.
- */
-module.exports = (req, res) => {
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
-
-  res.status(200).send(`<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -44,5 +36,4 @@ module.exports = (req, res) => {
   <script src="/dom-builder.js"></script>
   <script src="/app.js"></script>
 </body>
-</html>`);
-};
+</html>
