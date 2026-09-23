@@ -7,7 +7,7 @@
  */
 (function () {
   const SESSION_KEY = 'jcompass_session';
-  const LOGIN_PAGE  = 'login.html';
+  const LOGIN_PAGE = '/login';
 
   function redirectToLogin(reason) {
     try { localStorage.removeItem(SESSION_KEY); } catch (e) {}

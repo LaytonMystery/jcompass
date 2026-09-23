@@ -1,0 +1,48 @@
+/**
+ * Vercel Serverless Function — Dashboard entry point
+ * Returns the HTML shell as a string. All UI is built client-side by dom-builder.js.
+ */
+module.exports = (req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+
+  res.status(200).send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="JCompass" />
+  <meta name="theme-color" content="#1e2235" />
+  <title>Journalist's Compass</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" href="/favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css" />
+  <script src="/auth-guard.js"></script>
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script>
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+      await OneSignal.init({
+        appId: "e76cbe01-1a76-4f3d-a45d-9d155a126093",
+        notifyButton: { enable: true, size: 'medium', position: 'bottom-right', offset: { bottom: '20px', right: '20px' }, prenotify: true, showCredit: false },
+        allowLocalhostAsSecureOrigin: true,
+        serviceWorkerPath: '/OneSignalSDKWorker.js',
+        serviceWorkerParam: { scope: '/' }
+      });
+    });
+  </script>
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/dom-builder.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>`);
+};

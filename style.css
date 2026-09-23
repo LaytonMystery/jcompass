@@ -794,3 +794,54 @@ body[data-user-clearance="STAFF"] #quickAddProjectBtn {
 #reporterCheckboxList::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 4px; }
 #reporterCheckboxList::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
 #reporterCheckboxList::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+/* ==========================================================================
+   LOGIN PAGE — styles moved from inline <style> tag
+   ========================================================================== */
+html, body.login-page {
+  display: block;
+  height: 100%;
+  overflow: hidden;
+  background: radial-gradient(circle at 30% 20%, #1a2236 0%, #0d1017 100%);
+}
+
+body.login-page .auth-screen {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.login-loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 16, 23, 0.85);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 6000;
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.login-loading-overlay.active { display: flex; }
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgba(255,255,255,0.15);
+  border-top-color: #8b5cf6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 0.75rem;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}

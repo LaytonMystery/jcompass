@@ -132,7 +132,7 @@ form.addEventListener('submit', handleLogin);
     if (!raw) return;
     const s = JSON.parse(raw);
     if (s && s.user && s.expiresAt && Date.now() < s.expiresAt) {
-      window.location.replace('index.html');
+      window.location.replace('/');
     }
   } catch { /* ignore */ }
 })();
