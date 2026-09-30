@@ -2,7 +2,9 @@
 (function () {
   'use strict';
 
-  // ── 1. Per-table sync (same mapping as syncAllDataFromSupabase) ─────────
+  /* ══════════════════════════════════════════════════════════════════
+     SECTION 1 — Per-table sync
+     ══════════════════════════════════════════════════════════════════ */
   const bool = v => v === true || v === 1 || v === 'true';
   const T = {
     projects: {
@@ -59,43 +61,90 @@
     flushCachedCollections();
     t.render();
     applyProjectColors();
+    buildCabinetStats();
   }
 
-  // ── 2. Realtime subscriptions ───────────────────────────────────────────
+  /* ══════════════════════════════════════════════════════════════════
+     SECTION 2 — Realtime (single channel, debounced, auto-reconnect)
+     ══════════════════════════════════════════════════════════════════ */
   const timers = {};
+  let liveChannel = null;
+  let reconnectTimer = null;
+  let subscribedOnce = false;
+
+  function scheduleRefresh(table) {
+    clearTimeout(timers[table]);
+    timers[table] = setTimeout(() => {
+      refreshTable(table).catch(e => console.error('live refresh', table, e));
+    }, 250);
+  }
+
   function subscribeLive() {
-    Object.keys(T).forEach(name => {
-      supabaseClient.channel(name + '-live')
-        .on('postgres_changes', { event: '*', schema: 'public', table: name }, () => {
-          clearTimeout(timers[name]);
-          timers[name] = setTimeout(() => refreshTable(name).catch(e => console.error('live', name, e)), 250);
-        })
-        .subscribe(s => { if (s === 'CHANNEL_ERROR') console.warn('Realtime error:', name); });
+    if (subscribedOnce && liveChannel) return; // prevent duplicate channels
+    subscribedOnce = true;
+
+    liveChannel = supabaseClient.channel('jcompass-live');
+
+    ['projects', 'deployments', 'events', 'sources', 'audit_log'].forEach(table => {
+      liveChannel.on('postgres_changes',
+        { event: '*', schema: 'public', table },
+        () => scheduleRefresh(table));
     });
 
-    // Full-screen popup when a task / project is assigned to me
-    supabaseClient.channel('assign-popup')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'assignments' }, p => {
-        if (currentUser && p.new.assignee === currentUser.name && p.new.created_by !== currentUser.name)
+    // Assignment popup triggers
+    liveChannel.on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'assignments' },
+      p => {
+        if (currentUser && p.new.assignee === currentUser.name && p.new.created_by !== currentUser.name) {
           showAssignPopup('New task assigned', p.new.title, 'assignments');
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'projects' }, p => {
-        if (currentUser && p.new.reporter === currentUser.name)
+        }
+        scheduleRefresh('projects'); // assignments aren't in the auto-sync list, but keep dashboard fresh
+      });
+
+    liveChannel.on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'projects' },
+      p => {
+        if (currentUser && p.new.reporter === currentUser.name) {
           showAssignPopup('New project assigned', p.new.title, 'dashboard');
-      })
-      .subscribe();
+        }
+      });
+
+    liveChannel.subscribe(status => {
+      if (status === 'SUBSCRIBED') {
+        console.log('✅ Live channel connected.');
+        subscribedOnce = true;
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        console.warn('Live channel disconnected, retrying…', status);
+        try { supabaseClient.removeChannel(liveChannel); } catch (e) {}
+        liveChannel = null;
+        subscribedOnce = false;
+        clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(subscribeLive, 3000);
+      }
+    });
   }
 
+  // Wrap the app's original subscribeRealtime so ours hooks in too
   const _sub = window.subscribeRealtime;
-  window.subscribeRealtime = async function () { await _sub(); subscribeLive(); };
+  window.subscribeRealtime = async function () {
+    try { await _sub(); } catch (e) { console.warn('app realtime:', e); }
+    subscribeLive();
+  };
 
-  // Catch up after the phone/tab was asleep
+  // Re-sync when the tab becomes visible again (phone/tab was asleep)
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState !== 'visible' || typeof currentUser === 'undefined' || !currentUser) return;
-    try { await syncAllDataFromSupabase(); rebuildApplicationDOMViews(); applyProjectColors(); } catch (e) {}
+    try {
+      await syncAllDataFromSupabase();
+      rebuildApplicationDOMViews();
+      applyProjectColors();
+      buildCabinetStats();
+    } catch (e) { console.warn('catch-up sync failed', e); }
   });
 
-  // ── 3. Full-screen assignment popup ─────────────────────────────────────
+  /* ══════════════════════════════════════════════════════════════════
+     SECTION 3 — Assignment popup
+     ══════════════════════════════════════════════════════════════════ */
   function showAssignPopup(heading, title, page) {
     const el = document.createElement('div');
     el.className = 'assign-popup';
@@ -112,7 +161,9 @@
     if (navigator.vibrate) navigator.vibrate(200);
   }
 
-  // ── 4. Project status colours: green active / red overdue / yellow due soon
+  /* ══════════════════════════════════════════════════════════════════
+     SECTION 4 — Project status colours
+     ══════════════════════════════════════════════════════════════════ */
   function applyProjectColors() {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     document.querySelectorAll('#projectGrid .profile-btn').forEach(btn => {
@@ -123,7 +174,8 @@
       let c = 'proj-ok';
       if (p.deadline && p.status !== 'FILED' && p.status !== 'PUBLISHED') {
         const d = Math.ceil((new Date(p.deadline) - today) / 86400000);
-        if (d < 0) c = 'proj-late'; else if (d <= 3) c = 'proj-soon';
+        if (d < 0) c = 'proj-late';
+        else if (d <= 3) c = 'proj-soon';
       }
       card.classList.add(c);
     });
@@ -133,7 +185,9 @@
     window[fn] = function () { orig.apply(this, arguments); applyProjectColors(); };
   });
 
-  // ── 5. Announcement auto-scroll (loops to top, 0.5 s pause) ─────────────
+  /* ══════════════════════════════════════════════════════════════════
+     SECTION 5 — Announcement auto-scroll
+     ══════════════════════════════════════════════════════════════════ */
   let paused = false, waiting = false;
   function tickScroll() {
     const c = document.getElementById('announcementsStreamContainer');
@@ -146,93 +200,251 @@
     requestAnimationFrame(tickScroll);
   }
 
-  // ── 6. Init: tiles, username lock, directory, light/dark ────────────────
-  function init() {
-    // clickable stat tiles
-    const go = { statActiveProjects: 'dashboard', statOverdue: 'calendar', statDueSoon: 'calendar',
-                 statStaffCount: 'users', statTodayCheckins: 'attend' };
-    Object.entries(go).forEach(([id, page]) => {
-      const v = document.getElementById(id);
-      if (!v) return;
-      v.classList.add('stat-link');
-      v.setAttribute('role', 'button');
-      v.onclick = () => { const n = document.querySelector('.nav-item[data-page="' + page + '"]'); if (n) n.click(); };
+  /* ══════════════════════════════════════════════════════════════════
+     SECTION 6 — Cabinet stats (clickable, staff filtering)
+     ══════════════════════════════════════════════════════════════════ */
+  function buildCabinetStats() {
+    const grid = document.querySelector('.stats-grid');
+    if (!grid) return;
+    grid.classList.add('cabinet-stats');
+
+    // Map stat id → nav-item data-page target
+    const targetMap = {
+      statActiveProjects: 'dashboard',
+      statOverdue:        'calendar',
+      statDueSoon:        'calendar',
+      statStaffCount:     'users',
+      statTodayCheckins:  'attend'
+    };
+
+    // STAFF: hide "Team Members" tile completely
+    const isStaff = currentUser && currentUser.role !== 'ADMIN';
+
+    grid.querySelectorAll('.stat-card').forEach(card => {
+      const valEl = card.querySelector('.stat-value');
+      if (!valEl) return;
+      const id = valEl.id;
+
+      // ---- Filter for STAFF ----
+      if (isStaff && id === 'statStaffCount') {
+        card.style.display = 'none';
+        return;
+      } else {
+        card.style.display = ''; // restore for admin
+      }
+
+      const target = targetMap[id];
+      if (!target) return;
+
+      // ---- Make it clickable ----
+      card.style.cursor = 'pointer';
+      card.dataset.target = target;
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+      card.title = 'Open ' + target;
+
+      // Bind once (avoid duplicate listeners)
+      if (!card.dataset.bound) {
+        card.dataset.bound = '1';
+
+        const go = (ev) => {
+          if (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+          }
+          const nav = document.querySelector('.nav-item[data-page="' + target + '"]');
+          if (!nav) {
+            console.warn('No nav-item for page:', target);
+            return;
+          }
+          nav.click();
+
+          // On mobile, close the sidebar if it's open
+          const sidebar = document.getElementById('sidebar');
+          if (sidebar && window.innerWidth <= 992) sidebar.classList.remove('active');
+        };
+
+        card.addEventListener('click', go);
+
+        card.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            go(e);
+          }
+        });
+      }
+    });
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     SECTION 7 — Brightness (Dark / Light) toggle inside the tray
+     ══════════════════════════════════════════════════════════════════ */
+  function initBrightness() {
+    const setMode = m => {
+      document.body.setAttribute('data-mode', m);
+      try { localStorage.setItem('jcompass_mode', m); } catch (e) {}
+      document.querySelectorAll('.mode-chip-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.mode === m);
+      });
+    };
+
+    let saved = 'dark';
+    try { saved = localStorage.getItem('jcompass_mode') || 'dark'; } catch (e) {}
+    setMode(saved);
+
+    document.querySelectorAll('.mode-chip-btn').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => setMode(btn.dataset.mode));
     });
 
-    // username locked
-    const nameIn = document.getElementById('sidebarNameInput'), save = document.getElementById('saveNameBtn');
+    // Remove any leftover topbar toggle from older versions
+    const oldToggle = document.getElementById('modeToggleBtn');
+    if (oldToggle) oldToggle.remove();
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     SECTION 8 — Init
+     ══════════════════════════════════════════════════════════════════ */
+  function init() {
+    // Lock the "Edit Username" input in the tray
+    const nameIn = document.getElementById('sidebarNameInput');
+    const save = document.getElementById('saveNameBtn');
     if (nameIn) { nameIn.readOnly = true; nameIn.disabled = true; }
     if (save) save.style.display = 'none';
 
-    // team directory: admin only
+    // Hide team directory for staff (already handled by CSS class, but ensure it)
     const dir = document.getElementById('staffDirectoryList');
     if (dir && dir.closest('.panel-card')) dir.closest('.panel-card').classList.add('dir-panel');
 
-    // announcements hover-pause
+    // Announcements hover-pause + auto-scroll
     const ac = document.getElementById('announcementsStreamContainer');
-    if (ac) { ac.addEventListener('mouseenter', () => paused = true); ac.addEventListener('mouseleave', () => paused = false); }
+    if (ac) {
+      ac.addEventListener('mouseenter', () => paused = true);
+      ac.addEventListener('mouseleave', () => paused = false);
+    }
     requestAnimationFrame(tickScroll);
 
-    // light / dark toggle in the top bar
-    const setMode = m => { document.body.setAttribute('data-mode', m); try { localStorage.setItem('jcompass_mode', m); } catch (e) {} };
-    setMode((function () { try { return localStorage.getItem('jcompass_mode'); } catch (e) {} })() || 'dark');
-    const right = document.querySelector('.topbar-right');
-    if (right) {
-      const b = document.createElement('button');
-      b.className = 'mode-toggle'; b.type = 'button'; b.title = 'Light / dark mode';
-      const sync = () => { b.textContent = document.body.dataset.mode === 'light' ? '🌙' : '☀️'; };
-      b.onclick = () => { setMode(document.body.dataset.mode === 'light' ? 'dark' : 'light'); sync(); };
-      sync(); right.prepend(b);
-    }
+    initBrightness();
+    buildCabinetStats();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+
+  // Re-run when the app's stats function fires
+  const origStats = window.generateDashboardStats;
+  if (origStats) {
+    window.generateDashboardStats = function () {
+      origStats.apply(this, arguments);
+      buildCabinetStats();
+    };
+  }
+
+  // Re-wire brightness chips when the tray is opened (in case DOM was rebuilt)
+  document.addEventListener('click', e => {
+    if (e.target.closest('.settings-sidebar-btn, #settingsGearBtn, #userAvatarBtn, #topbarProfileBtn')) {
+      setTimeout(initBrightness, 50);
+    }
+  }, true);
+
+  // Expose for debugging
+  window.__jcompass = { buildCabinetStats, subscribeLive, refreshTable };
 })();
 
-/* ── Layout part: left profile block, burger → avatar, bell in the sidebar ── */
+/* ══════════════════════════════════════════════════════════════════════
+   Layout part: logo slot, top-right hamburger, sidebar bell
+   ══════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
   const $ = id => document.getElementById(id);
 
   function buildLayout() {
-    const sidebar = $('sidebar'), nav = document.querySelector('.sidebar-nav');
-    if (!sidebar || !nav || $('sideProfile')) return;
+    const sidebar = $('sidebar');
+    const topRight = document.querySelector('.topbar-right');
+    if (!sidebar) return;
 
-    // 1) Profile block at the very top of the sidebar (name "stuck" to the side)
-    const prof = document.createElement('div');
-    prof.className = 'side-profile'; prof.id = 'sideProfile'; prof.title = 'Workspace settings';
-    prof.innerHTML = '<div class="user-avatar" id="sideAvatar">JC</div>' +
-      '<div class="side-profile-text"><div class="side-name" id="sideName">Loading…</div>' +
-      '<span class="clearance-badge" id="sideRole">STAFF</span></div>';
-    sidebar.insertBefore(prof, sidebar.querySelector('.sidebar-brand'));
-    prof.onclick = () => { const b = $('settingsSidebarBtn'); if (b) b.click(); };
+    // Logo slot in the sidebar
+    const brand = sidebar.querySelector('.sidebar-brand');
+    if (brand && !$('brandLogoSlot')) {
+      const oldIcon = brand.querySelector('.brand-icon');
+      if (oldIcon) oldIcon.remove();
 
-    // 2) Bell under the menu
-    const bell = document.createElement('button');
-    bell.className = 'side-bell'; bell.id = 'sideBell'; bell.type = 'button';
-    bell.innerHTML = '🔔 <span>Notifications</span><b class="bell-badge" id="bellBadge" hidden>0</b>';
-    nav.appendChild(bell);
-    bell.onclick = openBell;
+      const slot = document.createElement('div');
+      slot.className = 'brand-logo-slot';
+      slot.id = 'brandLogoSlot';
+      slot.title = 'Replace favicon.ico to change the logo';
 
-    // 3) Burger becomes the user avatar (opens the side panel, existing handler in app.js)
+      const img = document.createElement('img');
+      img.src = 'favicon.ico';
+      img.alt = 'JCompass logo';
+      img.onerror = () => {
+        img.remove();
+        slot.innerHTML = '<span class="brand-logo-placeholder">🧭</span>';
+      };
+      slot.appendChild(img);
+      brand.insertBefore(slot, brand.firstChild);
+    }
+
+    // Top-right hamburger profile button
+    if (topRight && !$('topbarProfileBtn')) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'topbar-menu-btn';
+      btn.id = 'topbarProfileBtn';
+      btn.title = 'Open workspace settings';
+      btn.innerHTML =
+        '<div class="hamburger-icon"><span></span><span></span><span></span></div>' +
+        '<div class="topbar-avatar" id="topbarAvatar">JC</div>' +
+        '<span class="topbar-name" id="topbarName">Loading…</span>';
+      btn.onclick = () => {
+        const settingsBtn = $('settingsSidebarBtn');
+        if (settingsBtn) settingsBtn.click();
+      };
+      topRight.appendChild(btn);
+    }
+
+    // Sidebar burger toggle stays a classic hamburger
     const burger = $('menuToggle');
-    if (burger) { burger.classList.add('avatar-toggle'); burger.innerHTML = '<span id="burgerAvatar">JC</span>'; }
-    const chip = $('userAvatarBtn'); if (chip) chip.classList.add('chip-hidden');
+    if (burger) {
+      burger.classList.remove('avatar-toggle');
+      burger.innerHTML = '☰';
+    }
 
-    // Mirror name / role / initials from the original elements
+    const chip = $('userAvatarBtn');
+    if (chip) chip.classList.add('chip-hidden');
+
+    // Mirror name / avatar from the hidden elements
     const mirror = () => {
       const g = id => ($(id) || {}).textContent || '';
-      $('sideName').textContent = g('displayName'); $('sideRole').textContent = g('displayRole');
-      $('sideAvatar').textContent = g('avatarBadgeIcon'); $('burgerAvatar').textContent = g('avatarBadgeIcon');
+      const av = $('topbarAvatar');
+      const nm = $('topbarName');
+      if (av) av.textContent = g('avatarBadgeIcon') || 'JC';
+      if (nm) nm.textContent = g('displayName') || 'User';
     };
     ['displayName', 'displayRole', 'avatarBadgeIcon'].forEach(id => {
-      if ($(id)) new MutationObserver(mirror).observe($(id), { childList: true, characterData: true, subtree: true });
+      const el = $(id);
+      if (el && !el.dataset.mirrorObserver) {
+        el.dataset.mirrorObserver = '1';
+        new MutationObserver(mirror).observe(el, { childList: true, characterData: true, subtree: true });
+      }
     });
     mirror();
+
+    // Bell in the sidebar
+    const nav = sidebar.querySelector('.sidebar-nav');
+    if (nav && !$('sideBell')) {
+      const bell = document.createElement('button');
+      bell.className = 'side-bell';
+      bell.id = 'sideBell';
+      bell.type = 'button';
+      bell.innerHTML = '🔔 <span>Notifications</span><b class="bell-badge" id="bellBadge" hidden>0</b>';
+      bell.onclick = openBell;
+      nav.appendChild(bell);
+    }
   }
 
-  // Unread badge: announcements/DMs for me that arrived since the bell was last opened
   const SEEN = 'jcompass_bell_seen';
   const num = a => parseInt(String(a.id).replace('remote-', ''), 10) || 0;
+
   function mine() {
     return (typeof announcements === 'undefined' || !currentUser) ? [] : announcements.filter(a =>
       a.sender !== currentUser.name && (a.target === 'ALL' || a.target === currentUser.name));
@@ -241,23 +453,33 @@
     const b = $('bellBadge'); if (!b) return;
     let seen = 0; try { seen = parseInt(localStorage.getItem(SEEN) || '0', 10); } catch (e) {}
     const n = mine().filter(a => num(a) > seen).length;
-    b.textContent = n > 99 ? '99+' : n; b.hidden = n === 0;
+    b.textContent = n > 99 ? '99+' : n;
+    b.hidden = n === 0;
   }
   function openBell() {
     try { localStorage.setItem(SEEN, String(Math.max(0, ...announcements.map(num)))); } catch (e) {}
     updateBadge();
     const nav = document.querySelector('.nav-item[data-page="dashboard"]'); if (nav) nav.click();
     const sb = $('sidebar'); if (sb) sb.classList.remove('active');
-    setTimeout(() => { const s = $('announcementsStreamContainer'); if (s) s.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 150);
-    // ask for push permission the first time
+    setTimeout(() => {
+      const s = $('announcementsStreamContainer');
+      if (s) s.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
     window.OneSignalDeferred = window.OneSignalDeferred || [];
-    OneSignalDeferred.push(async OS => { try { if (!OS.Notifications.permission) await OS.Notifications.requestPermission(); } catch (e) {} });
+    OneSignalDeferred.push(async OS => {
+      try { if (!OS.Notifications.permission) await OS.Notifications.requestPermission(); } catch (e) {}
+    });
   }
 
   const origStream = window.generateAnnouncementsStream;
   window.generateAnnouncementsStream = function () { origStream.apply(this, arguments); updateBadge(); };
   const origRebuild = window.rebuildApplicationDOMViews;
-  window.rebuildApplicationDOMViews = function () { origRebuild.apply(this, arguments); buildLayout(); updateBadge(); };
+  window.rebuildApplicationDOMViews = function () {
+    origRebuild.apply(this, arguments);
+    buildLayout();
+    updateBadge();
+  };
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', buildLayout); else buildLayout();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', buildLayout);
+  else buildLayout();
 })();

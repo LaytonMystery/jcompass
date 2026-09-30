@@ -1,7 +1,9 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v5.1                                          ║
- * ║  Fixed: submission restriction, staff-only lists, clean archives    ║
+ * ║  JOURNALIST'S COMPASS v5.2                                          ║
+ * ║  · Edit-Username handler removed                                    ║
+ * ║  · Assignee-only submissions                                        ║
+ * ║  · Staff-only lists                                                 ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
@@ -36,7 +38,7 @@ function initSupabaseClient() {
 // ═══════════════════════════════════════════════════════════════════════
 
 function wipeLegacyCache() {
-  const keep = ['jcompass_session', 'jcompass_theme'];
+  const keep = ['jcompass_session', 'jcompass_theme', 'jcompass_mode'];
   const toRemove = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -503,11 +505,9 @@ function evaluateClearancePermissions() {
   const tLabel = document.getElementById('displayName');
   const tRole = document.getElementById('displayRole');
   const aBadge = document.getElementById('avatarBadgeIcon');
-  const sInput = document.getElementById('sidebarNameInput');
   if (tLabel) tLabel.innerText = currentUser.name;
   if (tRole) tRole.innerText = currentUser.role;
   if (aBadge) aBadge.innerText = currentUser.code || 'JC';
-  if (sInput) sInput.value = currentUser.name;
   document.querySelectorAll('.admin-only-nav').forEach(el => {
     el.style.display = (currentUser.role === 'ADMIN') ? '' : 'none';
   });
@@ -787,30 +787,23 @@ async function deleteProject(projectId) {
 function openProjectSubmissionModal(projectId) {
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
-
-  // Guard: only the assigned reporter can open the submission form
   if (!p.reporter || p.reporter.toLowerCase() !== currentUser.name.toLowerCase()) {
     triggerNotificationToast('Only the assigned member can submit this output.');
     return;
   }
-
   activeProfileId = projectId;
   document.getElementById('projectSubModalCategory').innerText = 'PROJECT OUTPUT · ' + (p.category || '');
   document.getElementById('projectSubModalTitle').innerText = p.title;
-
   const body = document.getElementById('projectSubModalBody');
   const footer = document.getElementById('projectSubModalFooter');
-
   body.innerHTML =
     '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Project</span><div style="margin-top:0.25rem;font-size:0.95rem;">' + p.title + '</div></div>' +
     '<div><label class="form-label">Your Output / Report</label><textarea class="form-input" id="projectSubText" rows="6" placeholder="Describe the output of your work on this project..." style="font-family:var(--font-body); resize:vertical;">' + (p.submission_text || '') + '</textarea></div>' +
     '<div><label class="form-label">Attach File (optional)</label><input type="file" id="projectSubFile" class="form-input" style="padding:0.5rem;" accept=".pdf,.doc,.docx,.txt,.jpg,.png,.zip"></div>' +
     '<div style="font-size:0.75rem;color:var(--text-muted);">Submitting as <b>' + currentUser.name + '</b></div>';
-
   footer.innerHTML =
     '<button class="btn btn-ghost" data-close="projectSubmissionModal">Cancel</button>' +
     '<button class="btn btn-primary" id="projectSubConfirmBtn">📤 Submit Output</button>';
-
   document.getElementById('projectSubConfirmBtn').onclick = () => submitProjectOutput(projectId);
   document.getElementById('projectSubmissionModal').classList.add('active');
 }
@@ -818,21 +811,16 @@ function openProjectSubmissionModal(projectId) {
 async function submitProjectOutput(projectId) {
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
-
-  // Guard: only the assigned reporter can submit
   if (!p.reporter || p.reporter.toLowerCase() !== currentUser.name.toLowerCase()) {
     triggerNotificationToast('Only the assigned member can submit this output.');
     return;
   }
-
   const text = document.getElementById('projectSubText').value.trim();
   const fileInput = document.getElementById('projectSubFile');
-
   if (!text && (!fileInput || !fileInput.files[0])) {
     triggerNotificationToast('Please provide output or attach a file.');
     return;
   }
-
   let fileData = null;
   if (fileInput && fileInput.files[0]) {
     const file = fileInput.files[0];
@@ -843,14 +831,12 @@ async function submitProjectOutput(projectId) {
       reader.readAsDataURL(file);
     });
   }
-
   const updates = {
     submission_text: text,
     submission_file: fileData || p.submission_file || null,
     submitted_by: currentUser.name,
     submitted_at: new Date().toISOString()
   };
-
   if (supabaseClient) {
     try {
       const { data, error } = await supabaseClient.from('projects').update(updates).eq('id', p.id).select();
@@ -858,11 +844,9 @@ async function submitProjectOutput(projectId) {
       if (!data || data.length === 0) throw new Error('Update blocked.');
     } catch (err) { triggerNotificationToast('Error: ' + err.message); return; }
   }
-
   Object.assign(p, updates);
   await logAudit('submit_project_output', 'project', p.id, p.title, 'Submitted by ' + currentUser.name);
   await dispatchPing(currentUser.name, 'ALL', '📤 ' + currentUser.name + ' submitted output for: "' + p.title + '"');
-
   flushCachedCollections();
   document.getElementById('projectSubmissionModal').classList.remove('active');
   document.getElementById('projectProfileModal').classList.remove('active');
@@ -1249,8 +1233,6 @@ function openSubmissionModal(assignmentId) {
 
   const isAssignee = currentUser.name.toLowerCase() === (a.assignee || '').toLowerCase();
   const isAdmin = currentUser.role === 'ADMIN';
-
-  // Only the assignee can submit. Admin can view + review.
   const canSubmit = isAssignee && a.status === 'PENDING';
   const canReview = isAdmin && a.status === 'SUBMITTED';
   const isReadOnlyForAdmin = isAdmin && !isAssignee;
@@ -1307,20 +1289,16 @@ function openSubmissionModal(assignmentId) {
 async function submitAssignment() {
   const a = assignments.find(x => x.id === activeSubmissionId);
   if (!a) return;
-
   if (currentUser.name.toLowerCase() !== (a.assignee || '').toLowerCase()) {
     triggerNotificationToast('Only the assigned member can submit this task.');
     return;
   }
-
   const text = document.getElementById('submissionText').value.trim();
   const fileInput = document.getElementById('submissionFile');
-
   if (!text && (!fileInput || !fileInput.files[0])) {
     triggerNotificationToast('Please provide work or attach a file.');
     return;
   }
-
   let fileData = '';
   if (fileInput && fileInput.files[0]) {
     const file = fileInput.files[0];
@@ -1331,7 +1309,6 @@ async function submitAssignment() {
       reader.readAsDataURL(file);
     });
   }
-
   const updates = {
     submission_text: text,
     submission_file: fileData || null,
@@ -1339,7 +1316,6 @@ async function submitAssignment() {
     submitted_at: new Date().toISOString(),
     status: 'SUBMITTED'
   };
-
   if (supabaseClient) {
     try {
       const { data, error } = await supabaseClient.from('assignments').update(updates).eq('id', a.id).select();
@@ -1347,11 +1323,9 @@ async function submitAssignment() {
       if (!data || data.length === 0) throw new Error('Update blocked.');
     } catch (err) { triggerNotificationToast('Backend error: ' + err.message); return; }
   }
-
   Object.assign(a, updates);
   await logAudit('submit_task', 'assignment', a.id, a.title, 'Submitted by ' + currentUser.name);
   await dispatchPing(currentUser.name, a.created_by || 'ALL', '📤 ' + currentUser.name + ' submitted: "' + a.title + '"');
-
   flushCachedCollections();
   document.getElementById('assignmentSubmissionModal').classList.remove('active');
   generateAssignmentsGrid();
@@ -1866,7 +1840,7 @@ function generateActivitySummaryReport() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 20: WORK ASSIGNED (replaces "Sources")
+//  SECTION 20: WORK ASSIGNED
 // ═══════════════════════════════════════════════════════════════════════
 
 function generateSourcesGrid() {
@@ -2143,13 +2117,12 @@ function generateNotificationBar() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 25: INJECT ADMIN BUTTONS (only when there's data to clear)
+//  SECTION 25: INJECT ADMIN BUTTONS
 // ═══════════════════════════════════════════════════════════════════════
 
 function injectAdminClearButtons() {
   if (!currentUser || currentUser.role !== 'ADMIN') return;
 
-  // ── Archive projects clear button ──
   const arcBadge = document.getElementById('archiveCountBadge');
   const archivedCount = projects.filter(p => p.archived).length;
   const existingArcBtn = document.getElementById('clearArchivedProjectsBtn');
@@ -2166,7 +2139,6 @@ function injectAdminClearButtons() {
     existingArcBtn.remove();
   }
 
-  // ── Reports clear button ──
   const arcRepBadge = document.getElementById('archiveReportsCountBadge');
   const existingRepBtn = document.getElementById('clearArchiveReportsBtn');
 
@@ -2182,7 +2154,6 @@ function injectAdminClearButtons() {
     existingRepBtn.remove();
   }
 
-  // ── Summaries clear button ──
   const actSumBadge = document.getElementById('activitySummaryCountBadge');
   const existingSumBtn = document.getElementById('clearActivitySummariesBtn');
 
@@ -2219,6 +2190,9 @@ function initializeApp() {
 
   const savedTheme = localStorage.getItem('jcompass_theme') || 'forest';
   document.body.setAttribute('data-theme-profile', savedTheme);
+
+  const savedMode = localStorage.getItem('jcompass_mode') || 'dark';
+  document.body.setAttribute('data-mode', savedMode);
 
   enforceSessionGuard();
 
@@ -2458,26 +2432,6 @@ function initializeApp() {
     triggerNotificationToast('Event added.');
   });
 
-  const saveNameBtn = document.getElementById('saveNameBtn');
-  if (saveNameBtn) saveNameBtn.addEventListener('click', () => {
-    const input = document.getElementById('sidebarNameInput');
-    if (!input || !currentUser) return;
-    const newName = input.value.trim();
-    if (!newName) return;
-    currentUser.name = newName;
-    try {
-      const raw = localStorage.getItem(SESSION_KEY);
-      const s = raw ? JSON.parse(raw) : null;
-      if (s && s.user) {
-        s.user.name = newName;
-        localStorage.setItem(SESSION_KEY, JSON.stringify(s));
-        window.JCOMPASS_SESSION = s;
-      }
-    } catch (e) {}
-    evaluateClearancePermissions();
-    triggerNotificationToast('Name updated locally.');
-  });
-
   const genSummaryBtn = document.getElementById('generateActivitySummaryBtn');
   if (genSummaryBtn) genSummaryBtn.addEventListener('click', generateActivitySummaryReport);
 
@@ -2491,7 +2445,7 @@ function initializeApp() {
     });
   });
 
-  console.log('✅ JCompass initialized (v5.1)');
+  console.log('✅ JCompass initialized (v5.2)');
 }
 
 // ═══════════════════════════════════════════════════════════════════════

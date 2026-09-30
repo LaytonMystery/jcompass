@@ -1,7 +1,8 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Dashboard DOM Builder v5.0
- *  Adds: Calendar day popup, Work Assigned page, Project submission modal
+ *  JCompass — Dashboard DOM Builder v6.0
+ *  · Edit-Username removed (per adviser request)
+ *  · Brightness toggle (Dark / Light) added to control tray
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
@@ -39,13 +40,6 @@
       </div>
       <div class="tray-body">
         <div class="customizer-field">
-          <label for="sidebarNameInput" class="customizer-label">Edit Username</label>
-          <div class="input-inline-group">
-            <input type="text" id="sidebarNameInput" class="customizer-input" placeholder="Type new name...">
-            <button id="saveNameBtn" class="customizer-btn-save" title="Save Name">✓</button>
-          </div>
-        </div>
-        <div class="customizer-field" style="margin-top: 1.5rem;">
           <label class="customizer-label">Select Theme</label>
           <div class="theme-select-row">
             <button class="theme-chip-btn active" data-theme="forest">🌲 Forest</button>
@@ -54,7 +48,16 @@
             <button class="theme-chip-btn" data-theme="violet">🔮 Violet</button>
           </div>
         </div>
-        <div class="customizer-field" style="margin-top: 1.5rem;">
+
+        <div class="customizer-field" style="margin-top: 1.25rem;">
+          <label class="customizer-label">Brightness</label>
+          <div class="mode-select-row">
+            <button class="mode-chip-btn active" data-mode="dark">🌙 Dark</button>
+            <button class="mode-chip-btn" data-mode="light">☀️ Light</button>
+          </div>
+        </div>
+
+        <div class="customizer-field" style="margin-top: 1.25rem;">
           <label class="customizer-label">Push Alerts</label>
           <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0.15rem 0 0.6rem;">Get a device popup when someone messages you.</p>
           <button id="enableNotificationsBtn" class="btn btn-ghost" style="width:100%; font-size:0.85rem;">🔔 Enable Push Alerts</button>
