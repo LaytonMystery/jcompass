@@ -483,3 +483,14 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', buildLayout);
   else buildLayout();
 })();
+/* ══════════════════════════════════════════════════════════════════════
+   STAFF RESTRICTIONS
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Hide "Team Members" tile for STAFF */
+body[data-user-clearance="STAFF"] .stats-grid.cabinet-stats .stat-card:has(#statStaffCount) {
+  display: none !important;
+}
+body[data-user-clearance="STAFF"] #statStaffCount {
+  display: none !important;
+}

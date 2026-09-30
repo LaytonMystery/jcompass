@@ -1,9 +1,9 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v5.2                                          ║
- * ║  · Edit-Username handler removed                                    ║
+ * ║  JOURNALIST'S COMPASS v5.3                                          ║
+ * ║  · Staff restrictions (no Archive, no Team Members tile)            ║
+ * ║  · Attendance In/Out with field operation linking                   ║
  * ║  · Assignee-only submissions                                        ║
- * ║  · Staff-only lists                                                 ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
@@ -293,7 +293,13 @@ async function syncAllDataFromSupabase() {
       id: 'remote-' + row.id, reporter: row.reporter, role: row.role,
       date: row.date, time: row.time, lat: row.lat, lon: row.lon,
       accuracy: row.accuracy, location: row.location, note: row.note || '',
-      timestamp: row.timestamp_iso
+      timestamp: row.timestamp_iso,
+      check_out_time: row.check_out_time || '',
+      check_out_lat: row.check_out_lat || '',
+      check_out_lon: row.check_out_lon || '',
+      check_out_timestamp: row.check_out_timestamp || '',
+      task_ref: row.task_ref || '',
+      task_ref_id: row.task_ref_id || ''
     }));
     console.log('   ✓ Attendance:', attendanceLogs.length);
   } catch (err) { console.error('Sync attendance failed:', err); }
@@ -353,11 +359,35 @@ async function subscribeRealtime() {
         id, reporter: row.reporter, role: row.role,
         date: row.date, time: row.time, lat: row.lat, lon: row.lon,
         accuracy: row.accuracy, location: row.location, note: row.note || '',
-        timestamp: row.timestamp_iso
+        timestamp: row.timestamp_iso,
+        check_out_time: row.check_out_time || '',
+        check_out_lat: row.check_out_lat || '',
+        check_out_lon: row.check_out_lon || '',
+        check_out_timestamp: row.check_out_timestamp || '',
+        task_ref: row.task_ref || '',
+        task_ref_id: row.task_ref_id || ''
       });
       flushCachedCollections();
       renderAttendanceTable();
       updateAttendanceStats();
+      updateAttendanceButtons();
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'attendance' }, (payload) => {
+      const row = payload.new;
+      const id = 'remote-' + row.id;
+      const idx = attendanceLogs.findIndex(a => a.id === id);
+      if (idx >= 0) {
+        Object.assign(attendanceLogs[idx], {
+          check_out_time: row.check_out_time || '',
+          check_out_lat: row.check_out_lat || '',
+          check_out_lon: row.check_out_lon || '',
+          check_out_timestamp: row.check_out_timestamp || ''
+        });
+      }
+      flushCachedCollections();
+      renderAttendanceTable();
+      updateAttendanceStats();
+      updateAttendanceButtons();
     })
     .subscribe();
 
@@ -528,6 +558,7 @@ function evaluateClearancePermissions() {
 
 function rebuildApplicationDOMViews() {
   generateDashboardStats();
+  populateAttendanceTaskRefs();
   generateProjectDashboard();
   generateAnnouncementsStream();
   generateStaffDirectory();
@@ -1468,8 +1499,77 @@ function openCalendarDayModal(dateStr) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  SECTION 16: ATTENDANCE + GEO MAP
+//  SECTION 16: ATTENDANCE + GEO MAP (with Check In / Check Out)
 // ═══════════════════════════════════════════════════════════════════════
+
+function getTodayStr() {
+  return new Date().toLocaleDateString('en-CA');
+}
+
+function hasAnyCheckInToday() {
+  if (!currentUser) return false;
+  const today = getTodayStr();
+  return attendanceLogs.some(log => log.reporter === currentUser.name && log.date === today);
+}
+
+function getActiveAttendanceSession() {
+  if (!currentUser) return null;
+  const today = getTodayStr();
+  const todays = attendanceLogs
+    .filter(l => l.reporter === currentUser.name && l.date === today)
+    .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+  return todays.find(l => !l.check_out_time) || null;
+}
+
+function populateAttendanceTaskRefs() {
+  const select = document.getElementById('attendanceTaskRef');
+  if (!select || !currentUser) return;
+  const myDeployments = deployments.filter(d =>
+    !d.archived && (d.reporter || '').split(',').map(s => s.trim()).includes(currentUser.name)
+  );
+  select.innerHTML = '<option value="">— Not linked —</option>';
+  myDeployments.forEach(d => {
+    select.innerHTML += '<option value="' + d.id + '|' + d.title + '">📡 ' + d.title + (d.location ? ' — ' + d.location : '') + '</option>';
+  });
+  if (myDeployments.length === 0) {
+    select.innerHTML += '<option value="" disabled>No active deployments</option>';
+  }
+}
+
+function updateAttendanceButtons() {
+  const btnIn = document.getElementById('checkInBtn');
+  const btnOut = document.getElementById('checkOutBtn');
+  const statusEl = document.getElementById('attendanceTodayStatus');
+  if (!btnIn || !btnOut || !statusEl) return;
+
+  const activeSession = getActiveAttendanceSession();
+  const anyCheckIn = hasAnyCheckInToday();
+
+  if (activeSession) {
+    btnIn.disabled = true;
+    btnIn.textContent = '✓ Checked In';
+    btnIn.style.background = 'var(--success)';
+    btnOut.disabled = false;
+    btnOut.style.background = '';
+    statusEl.innerHTML = '✓ Checked in at <b>' + activeSession.time + '</b>' +
+      (activeSession.location ? ' · ' + activeSession.location : '') +
+      ' · Not yet checked out';
+  } else if (anyCheckIn) {
+    btnIn.disabled = false;
+    btnIn.textContent = '📍 Check In Again';
+    btnIn.style.background = '';
+    btnOut.disabled = true;
+    btnOut.style.background = '';
+    statusEl.innerHTML = '✓ You have already completed a session today. You can check in again if needed.';
+  } else {
+    btnIn.disabled = false;
+    btnIn.textContent = '📍 Check In';
+    btnIn.style.background = '';
+    btnOut.disabled = true;
+    btnOut.style.background = '';
+    statusEl.innerHTML = 'You have not checked in today.';
+  }
+}
 
 function renderAttendanceTable() {
   const tbody = document.getElementById('attendanceTableBody');
@@ -1479,22 +1579,24 @@ function renderAttendanceTable() {
   const subset = attendanceLogs.filter(log =>
     (log.reporter || '').toLowerCase().includes(attendanceSearchQuery.toLowerCase()) ||
     (log.date || '').includes(attendanceSearchQuery) ||
-    (log.location && log.location.toLowerCase().includes(attendanceSearchQuery.toLowerCase()))
+    (log.location && log.location.toLowerCase().includes(attendanceSearchQuery.toLowerCase())) ||
+    (log.task_ref && log.task_ref.toLowerCase().includes(attendanceSearchQuery.toLowerCase()))
   );
   if (subset.length === 0) { if (emptyRow) emptyRow.style.display = ''; return; }
   if (emptyRow) emptyRow.style.display = 'none';
   subset.slice(0, 100).forEach((log, idx) => {
     const tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
+    const latLon = (log.lat || '—') + ', ' + (log.lon || '—');
     tr.innerHTML =
-      '<td style="padding:0.75rem 1.5rem;">' + (idx + 1) + '</td>' +
+      '<td style="padding:0.75rem 1.25rem;">' + (idx + 1) + '</td>' +
       '<td style="padding:0.75rem 1rem;font-weight:600;">' + log.reporter + '</td>' +
       '<td style="padding:0.75rem 1rem;">' + log.date + '</td>' +
-      '<td style="padding:0.75rem 1rem;">' + log.time + '</td>' +
-      '<td style="padding:0.75rem 1rem;">' + log.lat + '</td>' +
-      '<td style="padding:0.75rem 1rem;">' + log.lon + '</td>' +
-      '<td style="padding:0.75rem 1rem;">±' + log.accuracy + 'm</td>' +
+      '<td style="padding:0.75rem 1rem;color:#9ae6b4;">' + log.time + '</td>' +
+      '<td style="padding:0.75rem 1rem;color:' + (log.check_out_time ? '#fc8181' : 'var(--text-muted)') + ';">' + (log.check_out_time || '—') + '</td>' +
+      '<td style="padding:0.75rem 1rem;font-size:0.75rem;">' + latLon + '</td>' +
       '<td style="padding:0.75rem 1rem;">' + (log.location || '—') + '</td>' +
+      '<td style="padding:0.75rem 1rem;font-size:0.78rem;">' + (log.task_ref ? '📡 ' + log.task_ref : '—') + '</td>' +
       '<td style="padding:0.75rem 1rem;">' + (log.note || '—') + '</td>' +
       '<td style="padding:0.75rem 1rem;">' + log.role + '</td>' +
       '<td style="padding:0.75rem 1rem;"><button class="card-action-btn" data-map-idx="' + idx + '" style="padding:0.25rem 0.5rem; font-size:0.85rem;">🗺️</button></td>';
@@ -1515,9 +1617,11 @@ function openGeoMap(log) {
   info.innerHTML =
     '<div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center;">' +
       '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">NAME</span><div style="font-weight:700;">' + log.reporter + '</div></div>' +
-      '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">DATE & TIME</span><div style="font-weight:600;">' + log.date + ' · ' + log.time + '</div></div>' +
+      '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">DATE</span><div style="font-weight:600;">' + log.date + '</div></div>' +
+      '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">IN</span><div style="font-weight:600; color:#9ae6b4;">' + log.time + '</div></div>' +
+      '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">OUT</span><div style="font-weight:600; color:' + (log.check_out_time ? '#fc8181' : 'var(--text-muted)') + ';">' + (log.check_out_time || '—') + '</div></div>' +
       '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">LOCATION</span><div style="font-weight:600;">' + (log.location || '—') + '</div></div>' +
-      '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">ACCURACY</span><div style="font-weight:600;">±' + log.accuracy + 'm</div></div>' +
+      (log.task_ref ? '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">LINKED TO</span><div style="font-weight:600;">📡 ' + log.task_ref + '</div></div>' : '') +
     '</div>' +
     (log.note ? '<div style="margin-top:0.5rem; font-size:0.82rem; color:var(--text-muted);">📝 ' + log.note + '</div>' : '');
   const lat = parseFloat(log.lat);
@@ -1552,12 +1656,6 @@ function startLiveClock() {
   setInterval(tick, 1000);
 }
 
-function hasCheckedInToday() {
-  if (!currentUser) return false;
-  const today = new Date().toLocaleDateString('en-CA');
-  return attendanceLogs.some(log => log.reporter === currentUser.name && log.date === today);
-}
-
 async function reverseGeocodeLabel(lat, lon) {
   try {
     const res = await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + lat + '&lon=' + lon);
@@ -1567,18 +1665,25 @@ async function reverseGeocodeLabel(lat, lon) {
   } catch { return 'Location unavailable'; }
 }
 
-async function processFieldTelemetryMarking() {
-  const btn = document.getElementById('markAttendanceBtn');
+async function processCheckIn() {
+  const btn = document.getElementById('checkInBtn');
   if (!btn || !currentUser) return;
-  if (hasCheckedInToday()) { triggerNotificationToast('Already checked in today.'); return; }
+
+  if (getActiveAttendanceSession()) {
+    triggerNotificationToast('You are already checked in. Please check out first.');
+    return;
+  }
+
   btn.disabled = true;
   btn.innerText = '⏳ Locating...';
+
   if (!navigator.geolocation) {
     triggerNotificationToast('Geolocation not supported.');
     btn.disabled = false;
-    btn.innerText = '📍 Check In Now';
+    btn.innerText = '📍 Check In';
     return;
   }
+
   navigator.geolocation.getCurrentPosition(async (pos) => {
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
@@ -1587,53 +1692,143 @@ async function processFieldTelemetryMarking() {
     const locationLabel = await reverseGeocodeLabel(lat, lon);
     const noteInput = document.getElementById('attendanceLocationNote');
     const note = noteInput ? noteInput.value.trim() : '';
+    const taskRefSelect = document.getElementById('attendanceTaskRef');
+    const taskRefVal = taskRefSelect ? taskRefSelect.value : '';
+    let taskRefTitle = '';
+    let taskRefId = '';
+    if (taskRefVal) {
+      const parts = taskRefVal.split('|');
+      taskRefId = parts[0] || '';
+      taskRefTitle = parts[1] || '';
+    }
+
     const entry = {
-      reporter: currentUser.name, role: currentUser.role,
+      id: 'pending',
+      reporter: currentUser.name,
+      role: currentUser.role,
       date: now.toLocaleDateString('en-CA'),
       time: now.toLocaleTimeString('en-US', { hour12: true }),
-      lat: lat.toFixed(6), lon: lon.toFixed(6),
+      lat: lat.toFixed(6),
+      lon: lon.toFixed(6),
       accuracy: Math.round(accuracy),
-      location: locationLabel, note,
-      timestamp: now.toISOString()
+      location: locationLabel,
+      note: note,
+      timestamp: now.toISOString(),
+      check_out_time: '',
+      check_out_lat: '',
+      check_out_lon: '',
+      check_out_timestamp: '',
+      task_ref: taskRefTitle,
+      task_ref_id: taskRefId
     };
+
     if (supabaseClient) {
       try {
-        const { error } = await supabaseClient.from('attendance').insert({
-          reporter: entry.reporter, role: entry.role, date: entry.date, time: entry.time,
-          lat: parseFloat(entry.lat), lon: parseFloat(entry.lon),
-          accuracy: entry.accuracy, location: entry.location, note: entry.note,
-          timestamp_iso: entry.timestamp
-        });
+        const { data, error } = await supabaseClient.from('attendance').insert({
+          reporter: entry.reporter,
+          role: entry.role,
+          date: entry.date,
+          time: entry.time,
+          lat: parseFloat(entry.lat),
+          lon: parseFloat(entry.lon),
+          accuracy: entry.accuracy,
+          location: entry.location,
+          note: entry.note,
+          timestamp_iso: entry.timestamp,
+          task_ref: entry.task_ref,
+          task_ref_id: entry.task_ref_id
+        }).select().single();
         if (error) throw error;
+        if (data && data.id) entry.id = 'remote-' + data.id;
       } catch (err) {
         triggerNotificationToast('Backend error: ' + err.message);
         btn.disabled = false;
-        btn.innerText = '📍 Check In Now';
+        btn.innerText = '📍 Check In';
         return;
       }
     }
-    attendanceLogs.unshift({ id: 'remote-pending', ...entry });
+
+    attendanceLogs.unshift(entry);
     flushCachedCollections();
     renderAttendanceTable();
     updateAttendanceStats();
-    btn.disabled = false;
-    btn.innerText = '✓ Checked In';
-    triggerNotificationToast('Attendance logged: ' + entry.time);
+    updateAttendanceButtons();
+    triggerNotificationToast('✓ Checked in at ' + entry.time);
   }, () => {
     btn.disabled = false;
-    btn.innerText = '📍 Check In Now';
+    btn.innerText = '📍 Check In';
+    triggerNotificationToast('Location access denied.');
+  }, { enableHighAccuracy: true, timeout: 12000 });
+}
+
+async function processCheckOut() {
+  const btn = document.getElementById('checkOutBtn');
+  if (!btn || !currentUser) return;
+
+  const activeSession = getActiveAttendanceSession();
+  if (!activeSession) {
+    triggerNotificationToast('You are not currently checked in.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerText = '⏳ Locating...';
+
+  if (!navigator.geolocation) {
+    triggerNotificationToast('Geolocation not supported.');
+    btn.disabled = false;
+    btn.innerText = '🚪 Check Out';
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+    const now = new Date();
+    const checkOutTime = now.toLocaleTimeString('en-US', { hour12: true });
+    const checkOutIso = now.toISOString();
+
+    const updates = {
+      check_out_time: checkOutTime,
+      check_out_lat: lat.toFixed(6),
+      check_out_lon: lon.toFixed(6),
+      check_out_timestamp: checkOutIso
+    };
+
+    if (supabaseClient && String(activeSession.id).startsWith('remote-')) {
+      const remoteId = parseInt(String(activeSession.id).replace('remote-', ''), 10);
+      if (!isNaN(remoteId)) {
+        try {
+          const { error } = await supabaseClient.from('attendance').update(updates).eq('id', remoteId);
+          if (error) throw error;
+        } catch (err) {
+          triggerNotificationToast('Backend error: ' + err.message);
+          btn.disabled = false;
+          btn.innerText = '🚪 Check Out';
+          return;
+        }
+      }
+    }
+
+    Object.assign(activeSession, updates);
+    flushCachedCollections();
+    renderAttendanceTable();
+    updateAttendanceStats();
+    updateAttendanceButtons();
+    triggerNotificationToast('✓ Checked out at ' + checkOutTime);
+  }, () => {
+    btn.disabled = false;
+    btn.innerText = '🚪 Check Out';
     triggerNotificationToast('Location access denied.');
   }, { enableHighAccuracy: true, timeout: 12000 });
 }
 
 function initAttendancePage() {
   startLiveClock();
+  populateAttendanceTaskRefs();
   renderAttendanceTable();
   updateAttendanceStats();
-  if (hasCheckedInToday()) {
-    const btn = document.getElementById('markAttendanceBtn');
-    if (btn) { btn.innerText = '✓ Checked In Today'; btn.style.background = 'var(--success)'; }
-  }
+  updateAttendanceButtons();
 }
 
 async function clearAttendanceLog() {
@@ -1650,6 +1845,7 @@ async function clearAttendanceLog() {
   flushCachedCollections();
   renderAttendanceTable();
   updateAttendanceStats();
+  updateAttendanceButtons();
   triggerNotificationToast('Attendance log cleared.');
 }
 
@@ -2063,8 +2259,11 @@ function exportProjectsCSV() {
 
 function exportAttendanceCSV() {
   if (attendanceLogs.length === 0) { triggerNotificationToast('No attendance data.'); return; }
-  const rows = [['Reporter','Role','Date','Time','Latitude','Longitude','Accuracy','Location','Note']];
-  attendanceLogs.forEach(l => rows.push([l.reporter, l.role, l.date, l.time, l.lat, l.lon, l.accuracy, l.location, l.note || '']));
+  const rows = [['Reporter','Role','Date','CheckIn','CheckOut','Latitude','Longitude','Accuracy','Location','LinkedTo','Note']];
+  attendanceLogs.forEach(l => rows.push([
+    l.reporter, l.role, l.date, l.time, l.check_out_time || '',
+    l.lat, l.lon, l.accuracy, l.location, l.task_ref || '', l.note || ''
+  ]));
   downloadCSV('jcompass-attendance-' + new Date().toISOString().split('T')[0] + '.csv', rows);
   triggerNotificationToast('Exported ' + attendanceLogs.length + ' records.');
 }
@@ -2241,8 +2440,10 @@ function initializeApp() {
     input.value = '';
   });
 
-  const attendanceBtn = document.getElementById('markAttendanceBtn');
-  if (attendanceBtn) attendanceBtn.addEventListener('click', processFieldTelemetryMarking);
+  const checkInBtn = document.getElementById('checkInBtn');
+  if (checkInBtn) checkInBtn.addEventListener('click', processCheckIn);
+  const checkOutBtn = document.getElementById('checkOutBtn');
+  if (checkOutBtn) checkOutBtn.addEventListener('click', processCheckOut);
   const clearAttBtn = document.getElementById('clearAttendanceBtn');
   if (clearAttBtn) clearAttBtn.addEventListener('click', clearAttendanceLog);
   const exportAttBtn = document.getElementById('exportAttendanceBtn');
@@ -2377,6 +2578,7 @@ function initializeApp() {
     }
     flushCachedCollections();
     generateDeploymentsGrid();
+    populateAttendanceTaskRefs();
     document.getElementById('addBeatModal').classList.remove('active');
     document.getElementById('beatName').value = '';
     document.getElementById('beatLocation').value = '';
@@ -2445,7 +2647,7 @@ function initializeApp() {
     });
   });
 
-  console.log('✅ JCompass initialized (v5.2)');
+  console.log('✅ JCompass initialized (v5.3)');
 }
 
 // ═══════════════════════════════════════════════════════════════════════

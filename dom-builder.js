@@ -1,8 +1,8 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Dashboard DOM Builder v6.0
- *  · Edit-Username removed (per adviser request)
- *  · Brightness toggle (Dark / Light) added to control tray
+ *  JCompass — Dashboard DOM Builder v6.1
+ *  · Archive nav restricted to Admin
+ *  · Attendance In/Out with deployment linking
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
@@ -22,7 +22,7 @@
           <li class="nav-item" data-page="calendar"><span class="nav-icon">📅</span><span class="nav-label">Deadline Calendar</span></li>
           <li class="nav-item" data-page="sources"><span class="nav-icon">👤</span><span class="nav-label">Work Assigned</span></li>
           <li class="nav-item admin-only-nav" data-page="users"><span class="nav-icon">👥</span><span class="nav-label">User Management</span></li>
-          <li class="nav-item" data-page="archive"><span class="nav-icon">🗄</span><span class="nav-label">Archive</span></li>
+          <li class="nav-item admin-only-nav" data-page="archive"><span class="nav-icon">🗄</span><span class="nav-label">Archive</span></li>
           <li class="nav-item admin-only-nav" data-page="audit"><span class="nav-icon">📜</span><span class="nav-label">Activity Log</span></li>
         </ul>
       </nav>
@@ -169,8 +169,8 @@
           <div class="card" style="display:flex; flex-direction:column; gap:1rem;">
             <div>
               <div class="card-category">ATTENDANCE TERMINAL</div>
-              <h3 style="font-family:var(--font-display); font-size:1.2rem; margin-top:0.25rem;">Check In</h3>
-              <p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.4rem;">Records your name, time, and location.</p>
+              <h3 style="font-family:var(--font-display); font-size:1.2rem; margin-top:0.25rem;">Check In / Check Out</h3>
+              <p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.4rem;">Records your time and location. Optionally link to an active field operation.</p>
             </div>
             <div style="background:rgba(0,0,0,0.2); border-radius:8px; padding:0.75rem 1rem; display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border-color);">
               <div>
@@ -182,11 +182,25 @@
                 <div id="liveDate" style="font-size:0.85rem; font-weight:600;">---</div>
               </div>
             </div>
+
+            <div>
+              <label class="form-label" style="margin-top:0;">Link to Field Operation (optional)</label>
+              <select class="form-select" id="attendanceTaskRef">
+                <option value="">— Not linked —</option>
+              </select>
+            </div>
+
             <div>
               <label class="form-label" style="margin-top:0;">Note (optional)</label>
               <input class="form-input" id="attendanceLocationNote" type="text" placeholder="e.g., Client meeting at City Hall">
             </div>
-            <button class="btn btn-primary" id="markAttendanceBtn" style="width:100%; padding:1rem; font-size:1rem; letter-spacing:0.5px;">📍 Check In Now</button>
+
+            <div style="display:flex; gap:0.5rem;">
+              <button class="btn btn-primary" id="checkInBtn" style="flex:1; padding:0.9rem; font-size:0.95rem;">📍 Check In</button>
+              <button class="btn btn-ghost" id="checkOutBtn" style="flex:1; padding:0.9rem; font-size:0.95rem;">🚪 Check Out</button>
+            </div>
+
+            <div id="attendanceTodayStatus" style="font-size:0.82rem; color:var(--text-muted); padding: 0.6rem 0.8rem; background: rgba(0,0,0,0.15); border-radius: 8px; border: 1px solid var(--border-color); line-height: 1.4;">Not checked in today.</div>
           </div>
           <div style="display:flex; flex-direction:column; gap:1rem;">
             <div class="card" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
@@ -209,12 +223,12 @@
           </div>
         </div>
         <div class="card" style="padding:0; overflow:hidden;">
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:1.25rem 1.5rem; border-bottom:1px solid var(--border-color);">
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:1.25rem 1.5rem; border-bottom:1px solid var(--border-color); flex-wrap:wrap; gap:0.5rem;">
             <div>
-              <div class="card-category">CHECK-IN HISTORY</div>
-              <h3 style="font-family:var(--font-display); font-size:1.1rem; margin-top:0.15rem;">Attendance Records</h3>
+              <div class="card-category">ATTENDANCE LEDGER</div>
+              <h3 style="font-family:var(--font-display); font-size:1.1rem; margin-top:0.15rem;">Check-In / Check-Out History</h3>
             </div>
-            <div style="display:flex; gap:0.75rem; align-items:center;">
+            <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
               <input type="text" id="attendanceSearchInput" class="search-bar" placeholder="🔍 Search..." style="width:200px; padding:0.5rem 0.75rem; font-size:0.85rem;">
               <button class="btn btn-ghost" id="exportAttendanceBtn" style="font-size:0.8rem; white-space:nowrap;">⬇ Export</button>
               <button class="btn btn-ghost" id="clearAttendanceBtn" style="font-size:0.8rem; color:var(--danger); border-color:rgba(229,62,62,0.3); white-space:nowrap;">🗑 Clear</button>
@@ -224,14 +238,14 @@
             <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
               <thead>
                 <tr style="background:rgba(0,0,0,0.2); text-align:left;">
-                  <th style="padding:0.75rem 1.5rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">#</th>
+                  <th style="padding:0.75rem 1.25rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">#</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">NAME</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">DATE</th>
-                  <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">TIME</th>
-                  <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">LAT</th>
-                  <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">LON</th>
-                  <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">ACCURACY</th>
+                  <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">IN</th>
+                  <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">OUT</th>
+                  <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">LAT/LON</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">LOCATION</th>
+                  <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">LINKED TO</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">NOTE</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">ROLE</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">MAP</th>
