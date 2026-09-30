@@ -1,8 +1,6 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Dashboard DOM Builder v6.1
- *  · Archive nav restricted to Admin
- *  · Attendance In/Out with deployment linking
+ *  JCompass — Dashboard DOM Builder v6.2
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
@@ -36,31 +34,31 @@
     <div class="control-tray" id="controlTray">
       <div class="tray-header">
         <div class="tray-title">WORKSPACE CONTROLS</div>
-        <button class="tray-close" id="controlTrayCloseBtn">✕</button>
+        <button class="tray-close" id="controlTrayCloseBtn" type="button">✕</button>
       </div>
       <div class="tray-body">
         <div class="customizer-field">
           <label class="customizer-label">Select Theme</label>
           <div class="theme-select-row">
-            <button class="theme-chip-btn active" data-theme="forest">🌲 Forest</button>
-            <button class="theme-chip-btn" data-theme="night">🌌 Night</button>
-            <button class="theme-chip-btn" data-theme="rust">🍂 Rust</button>
-            <button class="theme-chip-btn" data-theme="violet">🔮 Violet</button>
+            <button class="theme-chip-btn active" data-theme="forest" type="button">🌲 Forest</button>
+            <button class="theme-chip-btn" data-theme="night" type="button">🌌 Night</button>
+            <button class="theme-chip-btn" data-theme="rust" type="button">🍂 Rust</button>
+            <button class="theme-chip-btn" data-theme="violet" type="button">🔮 Violet</button>
           </div>
         </div>
 
         <div class="customizer-field" style="margin-top: 1.25rem;">
           <label class="customizer-label">Brightness</label>
           <div class="mode-select-row">
-            <button class="mode-chip-btn active" data-mode="dark">🌙 Dark</button>
-            <button class="mode-chip-btn" data-mode="light">☀️ Light</button>
+            <button class="mode-chip-btn active" data-mode="dark" type="button">🌙 Dark</button>
+            <button class="mode-chip-btn" data-mode="light" type="button">☀️ Light</button>
           </div>
         </div>
 
         <div class="customizer-field" style="margin-top: 1.25rem;">
           <label class="customizer-label">Push Alerts</label>
           <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0.15rem 0 0.6rem;">Get a device popup when someone messages you.</p>
-          <button id="enableNotificationsBtn" class="btn btn-ghost" style="width:100%; font-size:0.85rem;">🔔 Enable Push Alerts</button>
+          <button id="enableNotificationsBtn" class="btn btn-ghost" style="width:100%; font-size:0.85rem;" type="button">🔔 Enable Push Alerts</button>
           <div id="notificationStatusLabel" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.5rem;"></div>
         </div>
       </div>
@@ -68,7 +66,7 @@
 
     <main class="main-content">
       <header class="topbar">
-        <button class="menu-toggle" id="menuToggle">☰</button>
+        <button class="menu-toggle" id="menuToggle" type="button">☰</button>
         <div class="topbar-center">
           <span>JCompass</span>
           <span class="breadcrumb-sep">›</span>
@@ -95,17 +93,17 @@
               <select id="announcePingTarget" class="form-select" style="max-width: 200px;">
                 <option value="ALL">Send to All</option>
               </select>
-              <button class="btn btn-primary" id="submitAnnouncementBtn">Send Announcement</button>
+              <button class="btn btn-primary" id="submitAnnouncementBtn" type="button">Send Announcement</button>
             </div>
           </div>
         </div>
 
         <div class="stats-grid" id="dashboardStatsGrid">
-          <div class="stat-card"><div class="stat-value" id="statActiveProjects">0</div><div class="stat-label">Active Projects</div></div>
-          <div class="stat-card stat-warning"><div class="stat-value" id="statOverdue">0</div><div class="stat-label">Overdue</div></div>
-          <div class="stat-card stat-soon"><div class="stat-value" id="statDueSoon">0</div><div class="stat-label">Due Soon (3d)</div></div>
-          <div class="stat-card"><div class="stat-value" id="statStaffCount">0</div><div class="stat-label">Team Members</div></div>
-          <div class="stat-card stat-success"><div class="stat-value" id="statTodayCheckins">0</div><div class="stat-label">Today's Check-ins</div></div>
+          <div class="stat-card" id="statActiveProjectsParent"><div class="stat-value" id="statActiveProjects">0</div><div class="stat-label">Active Projects</div></div>
+          <div class="stat-card stat-warning" id="statOverdueParent"><div class="stat-value" id="statOverdue">0</div><div class="stat-label">Overdue</div></div>
+          <div class="stat-card stat-soon" id="statDueSoonParent"><div class="stat-value" id="statDueSoon">0</div><div class="stat-label">Due Soon (3d)</div></div>
+          <div class="stat-card" id="statStaffCountParent"><div class="stat-value" id="statStaffCount">0</div><div class="stat-label">Team Members</div></div>
+          <div class="stat-card stat-success" id="statTodayCheckinsParent"><div class="stat-value" id="statTodayCheckins">0</div><div class="stat-label">Today's Check-ins</div></div>
         </div>
 
         <div class="dashboard-announcements-section">
@@ -116,12 +114,12 @@
         <div class="dashboard-layout-grid">
           <div class="dashboard-main-column">
             <div class="filter-bar" id="dashboardFilterBar">
-              <button class="filter-chip active" data-filter="ALL">All Topics</button>
-              <button class="filter-chip" data-filter="INVESTIGATIVE">Investigative</button>
-              <button class="filter-chip" data-filter="SPORTS">Sports</button>
-              <button class="filter-chip" data-filter="FEATURES">Features</button>
-              <button class="filter-chip" data-filter="BREAKING">Breaking</button>
-              <button class="filter-chip" data-filter="OPINION">Opinion</button>
+              <button class="filter-chip active" data-filter="ALL" type="button">All Topics</button>
+              <button class="filter-chip" data-filter="INVESTIGATIVE" type="button">Investigative</button>
+              <button class="filter-chip" data-filter="SPORTS" type="button">Sports</button>
+              <button class="filter-chip" data-filter="FEATURES" type="button">Features</button>
+              <button class="filter-chip" data-filter="BREAKING" type="button">Breaking</button>
+              <button class="filter-chip" data-filter="OPINION" type="button">Opinion</button>
             </div>
             <div class="search-wrap" style="margin-top: 1rem; margin-bottom: 1.5rem;">
               <input type="text" class="search-bar" id="dashboardSearchInput" placeholder="Search projects...">
@@ -137,19 +135,19 @@
             <div class="card panel-card">
               <div class="card-category">QUICK ACTIONS</div>
               <div style="display:flex; flex-direction:column; gap:0.5rem; margin-top:0.75rem;">
-                <button class="btn btn-primary" id="quickAddProjectBtn" style="font-size:0.85rem;">+ New Project</button>
-                <button class="btn btn-ghost" id="quickExportCSVBtn" style="font-size:0.85rem;">⬇ Export CSV</button>
+                <button class="btn btn-primary" id="quickAddProjectBtn" style="font-size:0.85rem;" type="button">+ New Project</button>
+                <button class="btn btn-ghost" id="quickExportCSVBtn" style="font-size:0.85rem;" type="button">⬇ Export CSV</button>
               </div>
             </div>
           </div>
         </div>
-        <button class="fab" id="fabBtn" title="Create New Project">+</button>
+        <button class="fab" id="fabBtn" title="Create New Project" type="button">+</button>
       </div>
 
       <div class="page" id="page-beat">
         <div class="section-header">
           <h2 class="section-title">Active Field Operations</h2>
-          <button class="btn btn-primary" id="addBeatBtn">+ New Field Operation</button>
+          <button class="btn btn-primary" id="addBeatBtn" type="button">+ New Field Operation</button>
         </div>
         <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Send team members to a location. Select multiple members — each is notified automatically.</p>
         <div class="grid" id="beatsGrid"></div>
@@ -158,7 +156,7 @@
       <div class="page" id="page-assignments">
         <div class="section-header">
           <h2 class="section-title">Assigned Tasks</h2>
-          <button class="btn btn-primary" id="addAssignmentBtn">+ Create Task</button>
+          <button class="btn btn-primary" id="addAssignmentBtn" type="button">+ Create Task</button>
         </div>
         <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Team members submit work on assigned tasks. Admins review and approve.</p>
         <div class="grid" id="assignmentsGrid"></div>
@@ -196,8 +194,8 @@
             </div>
 
             <div style="display:flex; gap:0.5rem;">
-              <button class="btn btn-primary" id="checkInBtn" style="flex:1; padding:0.9rem; font-size:0.95rem;">📍 Check In</button>
-              <button class="btn btn-ghost" id="checkOutBtn" style="flex:1; padding:0.9rem; font-size:0.95rem;">🚪 Check Out</button>
+              <button class="btn btn-primary" id="checkInBtn" style="flex:1; padding:0.9rem; font-size:0.95rem;" type="button">📍 Check In</button>
+              <button class="btn btn-ghost" id="checkOutBtn" style="flex:1; padding:0.9rem; font-size:0.95rem;" type="button">🚪 Check Out</button>
             </div>
 
             <div id="attendanceTodayStatus" style="font-size:0.82rem; color:var(--text-muted); padding: 0.6rem 0.8rem; background: rgba(0,0,0,0.15); border-radius: 8px; border: 1px solid var(--border-color); line-height: 1.4;">Not checked in today.</div>
@@ -216,7 +214,7 @@
             <div class="card" style="flex:1;">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
                 <h3 style="font-family:var(--font-display); font-size:1rem;">Upcoming Events</h3>
-                <button class="btn btn-ghost" id="addEventBtn" style="padding:0.25rem 0.5rem; font-size:0.8rem;">+ Add Event</button>
+                <button class="btn btn-ghost" id="addEventBtn" style="padding:0.25rem 0.5rem; font-size:0.8rem;" type="button">+ Add Event</button>
               </div>
               <div class="event-checklist" id="eventsChecklistContainer"></div>
             </div>
@@ -230,8 +228,8 @@
             </div>
             <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
               <input type="text" id="attendanceSearchInput" class="search-bar" placeholder="🔍 Search..." style="width:200px; padding:0.5rem 0.75rem; font-size:0.85rem;">
-              <button class="btn btn-ghost" id="exportAttendanceBtn" style="font-size:0.8rem; white-space:nowrap;">⬇ Export</button>
-              <button class="btn btn-ghost" id="clearAttendanceBtn" style="font-size:0.8rem; color:var(--danger); border-color:rgba(229,62,62,0.3); white-space:nowrap;">🗑 Clear</button>
+              <button class="btn btn-ghost" id="exportAttendanceBtn" style="font-size:0.8rem; white-space:nowrap;" type="button">⬇ Export</button>
+              <button class="btn btn-ghost" id="clearAttendanceBtn" style="font-size:0.8rem; color:var(--danger); border-color:rgba(229,62,62,0.3); white-space:nowrap;" type="button">🗑 Clear</button>
             </div>
           </div>
           <div style="overflow-x:auto;">
@@ -262,13 +260,13 @@
       <div class="page" id="page-calendar">
         <div class="section-header">
           <h2 class="section-title">Task Deadline Calendar</h2>
-          <button class="btn btn-primary" id="addCalendarProjectBtn">+ Add Project</button>
+          <button class="btn btn-primary" id="addCalendarProjectBtn" type="button">+ Add Project</button>
         </div>
         <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Click any highlighted date to see the tasks scheduled that day.</p>
         <div class="calendar-header">
-          <button class="cal-nav-btn" id="calPrevMonth">‹</button>
+          <button class="cal-nav-btn" id="calPrevMonth" type="button">‹</button>
           <div class="cal-month-year" id="calMonthYear">August 2026</div>
-          <button class="cal-nav-btn" id="calNextMonth">›</button>
+          <button class="cal-nav-btn" id="calNextMonth" type="button">›</button>
         </div>
         <div class="calendar-grid" id="calendarMatrixLayout"></div>
       </div>
@@ -287,7 +285,7 @@
       <div class="page" id="page-users">
         <div class="section-header">
           <h2 class="section-title">User Management</h2>
-          <button class="btn btn-primary" id="addUserBtn">+ Create Account</button>
+          <button class="btn btn-primary" id="addUserBtn" type="button">+ Create Account</button>
         </div>
         <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Admin-only.</p>
         <div class="card" style="margin-top:1rem; padding:0; overflow:hidden;">
@@ -329,7 +327,7 @@
           <h2 class="section-title">📊 Activity Summary</h2>
           <div style="display:flex; align-items:center; gap:0.75rem;">
             <span class="archive-count-badge" id="activitySummaryCountBadge">0 generated</span>
-            <button class="btn btn-ghost" id="generateActivitySummaryBtn" style="font-size:0.8rem; white-space:nowrap;">📊 Generate Summary</button>
+            <button class="btn btn-ghost" id="generateActivitySummaryBtn" style="font-size:0.8rem; white-space:nowrap;" type="button">📊 Generate Summary</button>
           </div>
         </div>
         <div class="grid" id="activitySummaryGrid"></div>
@@ -365,7 +363,7 @@
 
     <div class="modal-overlay" id="newProjectModal">
       <div class="modal">
-        <div class="modal-header"><h2 class="modal-title">Create New Project</h2><button class="modal-close" data-close="newProjectModal">✕</button></div>
+        <div class="modal-header"><h2 class="modal-title">Create New Project</h2><button class="modal-close" data-close="newProjectModal" type="button">✕</button></div>
         <div class="modal-body">
           <label class="form-label">Project Title</label>
           <input class="form-input" id="newTitle" type="text" placeholder="Enter project title...">
@@ -381,15 +379,15 @@
           <input class="form-input" id="newDeadline" type="date">
         </div>
         <div class="modal-footer">
-          <button class="btn btn-ghost" data-close="newProjectModal">Cancel</button>
-          <button class="btn btn-primary" id="createProjectBtn">Create Project</button>
+          <button class="btn btn-ghost" data-close="newProjectModal" type="button">Cancel</button>
+          <button class="btn btn-primary" id="createProjectBtn" type="button">Create Project</button>
         </div>
       </div>
     </div>
 
     <div class="modal-overlay" id="addBeatModal">
       <div class="modal" style="max-width:600px; width:95vw;">
-        <div class="modal-header"><h2 class="modal-title">New Field Operation</h2><button class="modal-close" data-close="addBeatModal">✕</button></div>
+        <div class="modal-header"><h2 class="modal-title">New Field Operation</h2><button class="modal-close" data-close="addBeatModal" type="button">✕</button></div>
         <div class="modal-body">
           <label class="form-label">Operation Title</label>
           <input class="form-input" id="beatName" type="text" placeholder="e.g., City Hall Coverage...">
@@ -407,15 +405,15 @@
           <div id="reporterCheckboxList" style="max-height:220px; overflow-y:auto; background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:8px; padding:0.75rem;"></div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-ghost" data-close="addBeatModal">Cancel</button>
-          <button class="btn btn-primary" id="saveBeatBtn">Deploy &amp; Notify</button>
+          <button class="btn btn-ghost" data-close="addBeatModal" type="button">Cancel</button>
+          <button class="btn btn-primary" id="saveBeatBtn" type="button">Deploy &amp; Notify</button>
         </div>
       </div>
     </div>
 
     <div class="modal-overlay" id="addAssignmentModal">
       <div class="modal" style="max-width:600px; width:95vw;">
-        <div class="modal-header"><h2 class="modal-title">Create Task</h2><button class="modal-close" data-close="addAssignmentModal">✕</button></div>
+        <div class="modal-header"><h2 class="modal-title">Create Task</h2><button class="modal-close" data-close="addAssignmentModal" type="button">✕</button></div>
         <div class="modal-body">
           <label class="form-label">Task Description</label>
           <input class="form-input" id="asgTitle" type="text" placeholder="What needs to be done?">
@@ -423,15 +421,15 @@
           <div id="assigneeRadioList" style="max-height:220px; overflow-y:auto; background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:8px; padding:0.75rem;"></div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-ghost" data-close="addAssignmentModal">Cancel</button>
-          <button class="btn btn-primary" id="saveAssignmentBtn">Create &amp; Notify</button>
+          <button class="btn btn-ghost" data-close="addAssignmentModal" type="button">Cancel</button>
+          <button class="btn btn-primary" id="saveAssignmentBtn" type="button">Create &amp; Notify</button>
         </div>
       </div>
     </div>
 
     <div class="modal-overlay" id="addEventModal">
       <div class="modal">
-        <div class="modal-header"><h2 class="modal-title">Add Event</h2><button class="modal-close" data-close="addEventModal">✕</button></div>
+        <div class="modal-header"><h2 class="modal-title">Add Event</h2><button class="modal-close" data-close="addEventModal" type="button">✕</button></div>
         <div class="modal-body">
           <label class="form-label">Event Title</label>
           <input class="form-input" id="evtName" type="text" placeholder="e.g., Team Meeting">
@@ -439,15 +437,15 @@
           <input class="form-input" id="evtDate" type="date">
         </div>
         <div class="modal-footer">
-          <button class="btn btn-ghost" data-close="addEventModal">Cancel</button>
-          <button class="btn btn-primary" id="saveEventBtn">Add Event</button>
+          <button class="btn btn-ghost" data-close="addEventModal" type="button">Cancel</button>
+          <button class="btn btn-primary" id="saveEventBtn" type="button">Add Event</button>
         </div>
       </div>
     </div>
 
     <div class="modal-overlay" id="addUserModal">
       <div class="modal">
-        <div class="modal-header"><h2 class="modal-title">Create Account</h2><button class="modal-close" data-close="addUserModal">✕</button></div>
+        <div class="modal-header"><h2 class="modal-title">Create Account</h2><button class="modal-close" data-close="addUserModal" type="button">✕</button></div>
         <div class="modal-body">
           <label class="form-label">Full Name</label>
           <input class="form-input" id="newUserName" type="text" placeholder="e.g., Jane Doe">
@@ -460,8 +458,8 @@
           </select>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-ghost" data-close="addUserModal">Cancel</button>
-          <button class="btn btn-primary" id="saveUserBtn">Create Account</button>
+          <button class="btn btn-ghost" data-close="addUserModal" type="button">Cancel</button>
+          <button class="btn btn-primary" id="saveUserBtn" type="button">Create Account</button>
         </div>
       </div>
     </div>
@@ -473,7 +471,7 @@
             <div class="card-category" id="profileModalCategory">CATEGORY</div>
             <h2 class="modal-title" id="profileModalTitle">Project</h2>
           </div>
-          <button class="modal-close" data-close="projectProfileModal">✕</button>
+          <button class="modal-close" data-close="projectProfileModal" type="button">✕</button>
         </div>
         <div class="modal-body" style="gap:1.25rem;">
           <div style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:center;">
@@ -493,9 +491,9 @@
           <div>
             <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; display:block; margin-bottom:0.4rem;">Priority</span>
             <div style="display:flex; gap:0.5rem;">
-              <button class="priority-select-btn" data-priority="LOW">🟢 Low</button>
-              <button class="priority-select-btn" data-priority="MEDIUM">🟡 Medium</button>
-              <button class="priority-select-btn" data-priority="HIGH">🔴 High</button>
+              <button class="priority-select-btn" data-priority="LOW" type="button">🟢 Low</button>
+              <button class="priority-select-btn" data-priority="MEDIUM" type="button">🟡 Medium</button>
+              <button class="priority-select-btn" data-priority="HIGH" type="button">🔴 High</button>
             </div>
           </div>
           <div><label class="form-label">Assigned To</label><input type="text" class="form-input" id="profileAssignedReporter" placeholder="Who is working on this?"></div>
@@ -515,7 +513,7 @@
           <div id="profileSubmissionSection" style="border-top:1px solid var(--border-color); padding-top:1rem; display:flex; flex-direction:column; gap:0.75rem;">
             <div class="card-category">📤 OUTPUT SUBMISSION</div>
             <div id="profileSubmissionInfo" style="font-size:0.85rem; color:var(--text-muted);">No output submitted yet.</div>
-            <button class="btn btn-primary" id="profileSubmitOutputBtn" style="font-size:0.9rem;">📤 Submit Output</button>
+            <button class="btn btn-primary" id="profileSubmitOutputBtn" style="font-size:0.9rem;" type="button">📤 Submit Output</button>
           </div>
         </div>
         <div class="modal-footer" style="justify-content:space-between;">
@@ -523,13 +521,13 @@
             <span style="font-size:1rem;">🔒</span><span>Read-only. Only Admins can edit.</span>
           </div>
           <div style="display:flex; gap:0.5rem;">
-            <button class="btn btn-ghost" id="profileArchiveBtn" style="color:var(--warning); border-color:rgba(221,107,32,0.4);">🗄 Archive</button>
-            <button class="btn btn-ghost" id="profileDeleteBtn" style="color:var(--danger); border-color:rgba(229,62,62,0.3);">🗑 Delete</button>
-            <button class="btn btn-ghost" id="profileRequestArchiveBtn" style="display:none; color:var(--warning); border-color:rgba(221,107,32,0.4);">📤 Request Archive</button>
+            <button class="btn btn-ghost" id="profileArchiveBtn" style="color:var(--warning); border-color:rgba(221,107,32,0.4);" type="button">🗄 Archive</button>
+            <button class="btn btn-ghost" id="profileDeleteBtn" style="color:var(--danger); border-color:rgba(229,62,62,0.3);" type="button">🗑 Delete</button>
+            <button class="btn btn-ghost" id="profileRequestArchiveBtn" style="display:none; color:var(--warning); border-color:rgba(221,107,32,0.4);" type="button">📤 Request Archive</button>
           </div>
           <div style="display:flex; gap:0.5rem; margin-left:0.5rem;">
-            <button class="btn btn-ghost" data-close="projectProfileModal">Close</button>
-            <button class="btn btn-primary" id="profileSaveBtn">💾 Save</button>
+            <button class="btn btn-ghost" data-close="projectProfileModal" type="button">Close</button>
+            <button class="btn btn-primary" id="profileSaveBtn" type="button">💾 Save</button>
           </div>
         </div>
       </div>
@@ -542,12 +540,12 @@
             <div class="card-category" id="deploymentModalCategory">FIELD OPERATION</div>
             <h2 class="modal-title" id="deploymentModalTitle">Operation</h2>
           </div>
-          <button class="modal-close" data-close="deploymentProfileModal">✕</button>
+          <button class="modal-close" data-close="deploymentProfileModal" type="button">✕</button>
         </div>
         <div class="modal-body" id="deploymentModalBody" style="gap:1rem;"></div>
         <div class="modal-footer" style="justify-content:space-between;">
           <div id="deploymentModalActions"></div>
-          <button class="btn btn-ghost" data-close="deploymentProfileModal">Close</button>
+          <button class="btn btn-ghost" data-close="deploymentProfileModal" type="button">Close</button>
         </div>
       </div>
     </div>
@@ -559,7 +557,7 @@
             <div class="card-category" id="submissionModalCategory">TASK</div>
             <h2 class="modal-title" id="submissionModalTitle">Task</h2>
           </div>
-          <button class="modal-close" data-close="assignmentSubmissionModal">✕</button>
+          <button class="modal-close" data-close="assignmentSubmissionModal" type="button">✕</button>
         </div>
         <div class="modal-body" id="submissionModalBody" style="gap:1rem;"></div>
         <div class="modal-footer" id="submissionModalFooter"></div>
@@ -573,7 +571,7 @@
             <div class="card-category" id="projectSubModalCategory">PROJECT OUTPUT</div>
             <h2 class="modal-title" id="projectSubModalTitle">Project</h2>
           </div>
-          <button class="modal-close" data-close="projectSubmissionModal">✕</button>
+          <button class="modal-close" data-close="projectSubmissionModal" type="button">✕</button>
         </div>
         <div class="modal-body" id="projectSubModalBody" style="gap:1rem;"></div>
         <div class="modal-footer" id="projectSubModalFooter"></div>
@@ -582,7 +580,7 @@
 
     <div class="modal-overlay" id="geoMapModal">
       <div class="modal" style="max-width:720px; width:95vw;">
-        <div class="modal-header"><h2 class="modal-title">📍 Check-in Location</h2><button class="modal-close" data-close="geoMapModal">✕</button></div>
+        <div class="modal-header"><h2 class="modal-title">📍 Check-in Location</h2><button class="modal-close" data-close="geoMapModal" type="button">✕</button></div>
         <div class="modal-body" style="padding:0; overflow:hidden;">
           <div id="geoMapReporterInfo" style="padding:1rem 1.25rem; background:rgba(0,0,0,0.2); border-bottom:1px solid var(--border-color);"></div>
           <div style="position:relative; width:100%; height:400px; background:#141824;">
@@ -590,7 +588,7 @@
           </div>
           <div style="padding:0.75rem 1.25rem; display:flex; justify-content:space-between; gap:0.75rem; border-top:1px solid var(--border-color);">
             <a id="geoMapOpenBtn" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size:0.82rem; text-decoration:none;">🌐 Open in Google Maps</a>
-            <button class="btn btn-ghost" data-close="geoMapModal">Close</button>
+            <button class="btn btn-ghost" data-close="geoMapModal" type="button">Close</button>
           </div>
         </div>
       </div>
@@ -600,11 +598,11 @@
       <div class="modal" style="max-width:640px; width:95vw;">
         <div class="modal-header">
           <h2 class="modal-title" id="calendarDayTitle">Date</h2>
-          <button class="modal-close" data-close="calendarDayModal">✕</button>
+          <button class="modal-close" data-close="calendarDayModal" type="button">✕</button>
         </div>
         <div class="modal-body" id="calendarDayBody" style="gap:1rem;"></div>
         <div class="modal-footer">
-          <button class="btn btn-ghost" data-close="calendarDayModal">Close</button>
+          <button class="btn btn-ghost" data-close="calendarDayModal" type="button">Close</button>
         </div>
       </div>
     </div>

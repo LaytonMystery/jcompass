@@ -1,40 +1,41 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  Journalist's Compass — Auth Guard
- *  Loaded synchronously in <head> on every protected page.
- *  Redirects to login.html if no valid session exists.
+ *  JCompass — Auth Guard
+ *  Loaded in <head> on every protected page. Kicks off a server-side
+ *  session verification in parallel with page load. app.js awaits
+ *  window.JCOMPASS_AUTH_READY before booting.
  * ══════════════════════════════════════════════════════════════════════
  */
-(function () {
-  const SESSION_KEY = 'jcompass_session';
-  const LOGIN_PAGE = '/login';
+window.JCOMPASS_AUTH_READY = (async function () {
+  const { CONFIG, Utils } = window.JC;
+  const raw = Utils.store.get(CONFIG.SESSION_KEY, null);
 
-  function redirectToLogin(reason) {
-    try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
-    if (reason) console.warn('JCompass auth-guard:', reason);
-    window.location.replace(LOGIN_PAGE);
+  if (!raw || !raw.token) {
+    window.location.replace(CONFIG.LOGIN_PAGE);
+    return null;
   }
 
-  let session = null;
+  // Local expiry check first (avoid a round-trip when we already know it's stale)
+  const payload = Utils.decodeTokenPayload(raw.token);
+  if (!payload || (payload.exp * 1000) < Date.now()) {
+    Utils.store.del(CONFIG.SESSION_KEY);
+    window.location.replace(CONFIG.LOGIN_PAGE);
+    return null;
+  }
+
   try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    session = raw ? JSON.parse(raw) : null;
-  } catch (err) {
-    redirectToLogin('corrupted session');
-    return;
-  }
+    const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+    const { data, error } = await sb.rpc('verify_session', { p_token: raw.token });
+    if (error || !data || !data.ok) throw new Error('verify failed');
 
-  if (!session || !session.user || !session.user.name || !session.user.role) {
-    redirectToLogin('no session');
-    return;
+    const session = { user: data.user, token: raw.token };
+    window.JCOMPASS_SESSION = session;
+    document.documentElement.setAttribute('data-authenticated', '1');
+    return session;
+  } catch (e) {
+    console.warn('JCompass auth-guard:', e.message);
+    Utils.store.del(CONFIG.SESSION_KEY);
+    window.location.replace(CONFIG.LOGIN_PAGE);
+    return null;
   }
-
-  if (!session.expiresAt || Date.now() > session.expiresAt) {
-    redirectToLogin('session expired');
-    return;
-  }
-
-  // Expose for app.js and mark document as authenticated
-  window.JCOMPASS_SESSION = session;
-  document.documentElement.setAttribute('data-authenticated', '1');
 })();
