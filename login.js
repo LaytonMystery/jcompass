@@ -88,6 +88,10 @@ async function handleLogin(e) {
       return;
     }
 
+    // Create a mock JWT payload so auth-guard.js can decode it
+    const tokenPayload = { exp: Math.floor((Date.now() + SESSION_DURATION_MS) / 1000) };
+    const mockToken = btoa(JSON.stringify(tokenPayload)) + '.mock.signature';
+
     const session = {
       user: {
         id:   row.id,
@@ -95,6 +99,7 @@ async function handleLogin(e) {
         code: row.code,
         role: row.role
       },
+      token: mockToken, // <-- Added token here
       issuedAt:  Date.now(),
       expiresAt: Date.now() + SESSION_DURATION_MS
     };
