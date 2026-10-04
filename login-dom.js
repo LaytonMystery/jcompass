@@ -1,51 +1,67 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Login DOM Builder
- *  Builds the login page UI at runtime. Loaded before login.js.
+ *  JCompass — Login DOM Builder (glass hero layout)
+ *  Loaded before login.js. Builds a full-screen hero with a glass card.
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildLoginDOM() {
   const UI = `
-    <div class="auth-screen">
-      <div class="auth-container">
-        <div class="auth-graphic-side">
-          <div class="graphic-gradient-overlay"></div>
-          <div class="graphic-content">
-            <div class="graphic-logo">
-              <img src="favicon.ico" alt="Journalist's Compass" onerror="this.replaceWith('🧭')">
-            </div>
-            <h2 class="graphic-title">Journalist's Compass</h2>
-            <p class="graphic-tagline">Centralized secure terminal for operations telemetry, editorial dispatch pipelines, and field correspondence networks.</p>
-            <div class="graphic-badge-row">
-              <span class="g-badge">Secure Terminal</span>
-              <span class="g-badge">Newsroom v2.0</span>
-            </div>
+    <div class="login-hero">
+      <div class="login-stars"></div>
+
+      <nav class="login-nav">
+        <div class="login-brand">
+          <div class="login-brand-logo">
+            <img src="favicon.ico" alt="Journalist's Compass" onerror="this.replaceWith('🧭')">
           </div>
+          <span class="login-brand-name">Journalist's Compass</span>
         </div>
-        <div class="auth-form-side">
-          <div id="authViewLogin" class="auth-view-wrapper active">
-            <div class="auth-form-header">
-              <h3 class="auth-form-title">Welcome Back</h3>
-              <p class="auth-form-subtitle">Sign in to your Newsroom desk profile</p>
+        <div class="login-nav-right">
+          <span class="login-nav-badge">🔒 Secure Terminal</span>
+        </div>
+      </nav>
+
+      <div class="login-stage">
+        <div class="login-card" id="loginCard">
+          <button class="login-card-close" id="loginCardClose" type="button" title="Clear form">✕</button>
+
+          <div class="login-card-header">
+            <h2 class="login-card-title">Login</h2>
+            <p class="login-card-subtitle">Sign in to your Newsroom desk profile</p>
+          </div>
+
+          <div class="auth-error" id="authError" style="display:none;">Invalid credentials.</div>
+
+          <form id="loginForm" autocomplete="on" novalidate>
+            <div class="glass-field">
+              <label for="username">Username</label>
+              <input type="text" id="username" placeholder="e.g., Staff Correspondent" autocomplete="username" required>
+              <span class="glass-field-icon">👤</span>
             </div>
-            <div class="auth-error" id="authError" style="display:none;">Invalid credentials.</div>
-            <form id="loginForm" autocomplete="on" novalidate>
-              <div class="auth-field">
-                <label class="form-label" for="username">Username</label>
-                <input type="text" id="username" class="auth-input" placeholder="e.g., Staff Correspondent" autocomplete="username" required>
-              </div>
-              <div class="auth-field">
-                <label class="form-label" for="password">Password</label>
-                <input type="password" id="password" class="auth-input" placeholder="••••••••" autocomplete="current-password" required>
-              </div>
-              <button type="submit" class="btn btn-primary auth-submit-btn" id="loginSubmitBtn">Authenticate Session</button>
-            </form>
-            <p style="font-size:0.75rem; color:var(--text-muted); text-align:center; margin-top:1rem; line-height:1.5;">
-              🔒 Accounts are issued and managed by Administrators.
-            </p>
+
+            <div class="glass-field">
+              <label for="password">Password</label>
+              <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
+              <span class="glass-field-icon">🔒</span>
+            </div>
+
+            <div class="glass-options">
+              <label class="glass-checkbox">
+                <input type="checkbox" id="rememberMe">
+                <span>Remember me</span>
+              </label>
+              <button type="button" class="glass-link" id="forgotBtn">Need help?</button>
+            </div>
+
+            <button type="submit" class="glass-submit" id="loginSubmitBtn">Login</button>
+          </form>
+
+          <div class="glass-footer">
+            🔒 Accounts are issued and managed by Administrators.
           </div>
         </div>
       </div>
+
       <div class="login-loading-overlay" id="loginLoading">
         <div class="spinner"></div>
         <span>Authenticating…</span>
@@ -54,4 +70,32 @@
   `;
 
   document.body.insertAdjacentHTML('afterbegin', UI);
+
+  /* ── Small UI-only wiring (login.js handles the real auth) ──── */
+
+  // X button clears the form and refocuses username
+  const closeBtn = document.getElementById('loginCardClose');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      const u = document.getElementById('username');
+      const p = document.getElementById('password');
+      const err = document.getElementById('authError');
+      if (u) u.value = '';
+      if (p) p.value = '';
+      if (err) err.style.display = 'none';
+      if (u) u.focus();
+    });
+  }
+
+  // "Need help?" shows a friendly toast
+  const forgotBtn = document.getElementById('forgotBtn');
+  if (forgotBtn) {
+    forgotBtn.addEventListener('click', () => {
+      const t = document.getElementById('toast');
+      if (!t) return;
+      t.innerText = 'Contact your Administrator for account help.';
+      t.classList.add('active');
+      setTimeout(() => t.classList.remove('active'), 3000);
+    });
+  }
 })();
