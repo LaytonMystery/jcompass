@@ -1,153 +1,73 @@
 /**
- * ══════════════════════════════════════════════════════════════════════
- *  Journalist's Compass — Login Controller
- *  Validates credentials against the Supabase `users` table ONLY.
- *  No hardcoded fallback accounts. If Supabase is unreachable, login fails.
- * ══════════════════════════════════════════════════════════════════════
+ * JCompass — Login Controller (v6)
+ * Token-based auth. No client-side password comparison.
  */
+(function () {
+  const { CONFIG, Session } = window.JC;
 
-const SUPABASE_URL = 'https://odqfqaywzwvxkvqptzxo.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_6CWGOKOIj4aXmRpidG6dVA_nYvcctoP';
+  const form      = document.getElementById('loginForm');
+  const userInput = document.getElementById('username');
+  const passInput = document.getElementById('password');
+  const errorBox  = document.getElementById('authError');
+  const submitBtn = document.getElementById('loginSubmitBtn');
+  const loading   = document.getElementById('loginLoading');
 
-const SESSION_KEY = 'jcompass_session';
-const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; // 8 hours
-
-const form       = document.getElementById('loginForm');
-const userInput  = document.getElementById('username');
-const passInput  = document.getElementById('password');
-const errorBox   = document.getElementById('authError');
-const submitBtn  = document.getElementById('loginSubmitBtn');
-const loadingBox = document.getElementById('loginLoading');
-
-// ⚠️ Renamed from `supabase` to avoid collision with window.supabase (the CDN global)
-let supabaseClient = null;
-
-function showError(msg) {
-  errorBox.textContent = msg;
-  errorBox.style.display = 'block';
-}
-function hideError() { errorBox.style.display = 'none'; }
-
-function setBusy(busy) {
-  submitBtn.disabled = busy;
-  submitBtn.textContent = busy ? 'Authenticating…' : 'Authenticate Session';
-  loadingBox.classList.toggle('active', busy);
-}
-
-async function handleLogin(e) {
-  if (e) e.preventDefault();
-  hideError();
-
-  const name = userInput.value.trim();
-  const pass = passInput.value.trim();
-
-  if (!name || !pass) {
-    showError('Both username and password are required.');
+  if (!window.supabase) {
+    errorBox.textContent = 'Authentication library failed to load. Refresh the page.';
+    errorBox.style.display = 'block';
     return;
   }
 
-  if (!supabaseClient) {
-    showError('Authentication service is unavailable. Check your connection.');
-    return;
-  }
+  const supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 
-  setBusy(true);
+  const showError = m => { errorBox.textContent = m; errorBox.style.display = 'block'; };
+  const hideError = () => { errorBox.style.display = 'none'; };
+  const setBusy = b => {
+    submitBtn.disabled = b;
+    submitBtn.textContent = b ? 'Authenticating…' : 'Authenticate Session';
+    if (loading) loading.classList.toggle('active', b);
+  };
 
-  try {
-    let row = null;
+  async function handleLogin(e) {
+    if (e) e.preventDefault();
+    hideError();
 
-    // Preferred: server-side RPC
-    const rpc = await supabaseClient.rpc('verify_login', { p_name: name, p_pass: pass });
+    const name = userInput.value.trim();
+    const pass = passInput.value;
+    if (!name || !pass) { showError('Both username and password are required.'); return; }
 
-    if (!rpc.error) {
-      const data = rpc.data;
-      row = Array.isArray(data) ? data[0] : data;
-    } else {
-      // Fallback: direct table read (only works if you kept the select policy)
-      const q = await supabaseClient
-        .from('users')
-        .select('id, name, pass, role, code')
-        .eq('name', name)
-        .limit(1)
-        .maybeSingle();
+    setBusy(true);
 
-      if (q.error) {
-        console.error('Supabase auth error:', q.error);
+    try {
+      const { data, error } = await supabaseClient.rpc('verify_login', { p_name: name, p_pass: pass });
+
+      if (error) {
+        console.error('Supabase auth error:', error);
         showError('Unable to reach authentication service. Please try again.');
         setBusy(false);
         return;
       }
-      if (q.data && q.data.pass === pass) {
-        row = { id: q.data.id, name: q.data.name, role: q.data.role, code: q.data.code };
+      if (!data || !data.ok || !data.token) {
+        showError('Invalid credentials.');
+        setBusy(false);
+        return;
       }
-    }
 
-    if (!row || !row.name || !row.role) {
-      showError('Invalid credentials.');
+      Session.save(data.token);
+      userInput.value = '';
+      passInput.value = '';
+      window.location.replace(CONFIG.HOME_PAGE);
+    } catch (err) {
+      console.error('Login exception:', err);
+      showError('Unexpected error. Please try again.');
       setBusy(false);
-      return;
     }
-
-    // Create a mock JWT payload so auth-guard.js can decode it
-    const tokenPayload = { exp: Math.floor((Date.now() + SESSION_DURATION_MS) / 1000) };
-    const mockToken = btoa(JSON.stringify(tokenPayload)) + '.mock.signature';
-
-    const session = {
-      user: {
-        id:   row.id,
-        name: row.name,
-        code: row.code,
-        role: row.role
-      },
-      token: mockToken, // <-- Added token here
-      issuedAt:  Date.now(),
-      expiresAt: Date.now() + SESSION_DURATION_MS
-    };
-
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    localStorage.removeItem('jcompass_user');
-
-    userInput.value = '';
-    passInput.value = '';
-
-    window.location.replace('index.html');
-
-  } catch (err) {
-    console.error('Login exception:', err);
-    showError('Unexpected error. Please try again.');
-    setBusy(false);
   }
-}
 
-// Submit button + Enter keys
-form.addEventListener('submit', handleLogin);
-[userInput, passInput].forEach(el => {
-  el.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      form.requestSubmit();
-    }
-  });
-});
+  form.addEventListener('submit', handleLogin);
+  [userInput, passInput].forEach(el => el.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); form.requestSubmit(); }
+  }));
 
-// Skip login if already authenticated
-(function skipIfAuthenticated() {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return;
-    const s = JSON.parse(raw);
-    if (s && s.user && s.expiresAt && Date.now() < s.expiresAt) {
-      window.location.replace('/');
-    }
-  } catch { /* ignore */ }
-})();
-
-// Boot
-(function boot() {
-  if (typeof window.supabase === 'undefined') {
-    showError('Authentication library failed to load. Refresh the page.');
-    return;
-  }
-  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   console.log('JCompass: login controller ready.');
 })();
