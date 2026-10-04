@@ -7,10 +7,12 @@
   const UI = `
     <aside class="sidebar" id="sidebar">
       <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close navigation">✕</button>
-      <div class="sidebar-brand">
-        <span class="brand-icon">🧭</span>
-        <h1 class="brand-name">Journalist's Compass</h1>
-      </div>
+    <div class="sidebar-brand">
+    <div class="brand-logo-slot">
+    <img src="favicon.ico" alt="JCompass" onerror="this.replaceWith('🧭')">
+    </div>
+  <h1 class="brand-name">Journalist's Compass</h1>
+  </div>
       <nav class="sidebar-nav">
         <ul class="nav-list">
           <li class="nav-item active" data-page="dashboard"><span class="nav-icon">⌂</span><span class="nav-label">Dashboard</span></li>

@@ -1,9 +1,19 @@
-/* JCompass layout add-ons — v6. Load AFTER app.js. */
+/* ══════════════════════════════════════════════════════════════════════
+   JCompass add-on — v6.1
+   Load AFTER app.js.
+   • Assign popup (JC.showAssignPopup)
+   • Auto-scroll announcements
+   • Cabinet stats (clickable, hides Team Members for STAFF)
+   • Brightness toggle wiring
+   • Layout: topbar bell + profile pill, hamburger inside workspace tray
+   ══════════════════════════════════════════════════════════════════════ */
+
 (function () {
   'use strict';
   const { Utils } = window.JC;
   const $ = id => document.getElementById(id);
 
+  /* ── Assign popup (called from app.js) ────────────────────────── */
   window.JC.showAssignPopup = function (heading, title, page) {
     const el = Utils.el('div', { class: 'assign-popup' });
     const box = Utils.el('div', { class: 'assign-popup-box' });
@@ -21,36 +31,169 @@
     if (navigator.vibrate) navigator.vibrate(200);
   };
 
+  /* ── Project status colours ───────────────────────────────────── */
+  function applyProjectColors() {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    document.querySelectorAll('#projectGrid .profile-btn').forEach(btn => {
+      const p = (typeof projects !== 'undefined') ? projects.find(x => x.id === parseInt(btn.dataset.id)) : null;
+      const card = btn.closest('.card');
+      if (!p || !card) return;
+      card.classList.remove('proj-ok', 'proj-late', 'proj-soon');
+      let c = 'proj-ok';
+      if (p.deadline && p.status !== 'FILED' && p.status !== 'PUBLISHED') {
+        const d = Math.ceil((new Date(p.deadline) - today) / 86400000);
+        if (d < 0) c = 'proj-late';
+        else if (d <= 3) c = 'proj-soon';
+      }
+      card.classList.add(c);
+    });
+  }
+  const origProjDash = window.generateProjectDashboard;
+  if (origProjDash) {
+    window.generateProjectDashboard = function () {
+      origProjDash.apply(this, arguments);
+      applyProjectColors();
+    };
+  }
+
+  /* ── Announcements auto-scroll ────────────────────────────────── */
+  let paused = false, waiting = false;
+  function tickScroll() {
+    const c = $('announcementsStreamContainer');
+    if (c && !paused && !waiting && c.scrollHeight > c.clientHeight + 2) {
+      if (c.scrollTop + c.clientHeight >= c.scrollHeight - 1) {
+        waiting = true;
+        setTimeout(() => { c.scrollTop = 0; setTimeout(() => { waiting = false; }, 500); }, 500);
+      } else c.scrollTop += 0.6;
+    }
+    requestAnimationFrame(tickScroll);
+  }
+
+  /* ── Cabinet stats — hide Team Members tile for STAFF ─────────── */
+  function buildCabinetStats() {
+    const grid = document.querySelector('.stats-grid');
+    if (!grid) return;
+    grid.classList.add('cabinet-stats');
+
+    const targetMap = {
+      statActiveProjects: 'dashboard',
+      statOverdue:        'calendar',
+      statDueSoon:        'calendar',
+      statStaffCount:     'users',
+      statTodayCheckins:  'attend'
+    };
+    const isStaff = (window.JC.Session.user()?.role || 'STAFF') !== 'ADMIN';
+
+    grid.querySelectorAll('.stat-card').forEach(card => {
+      const valEl = card.querySelector('.stat-value');
+      if (!valEl) return;
+      const id = valEl.id;
+
+      if (id === 'statStaffCount' && isStaff) {
+        card.style.display = 'none';
+        return;
+      }
+      card.style.display = '';
+
+      const target = targetMap[id];
+      if (!target) return;
+      card.style.cursor = 'pointer';
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+
+      if (!card.dataset.bound) {
+        card.dataset.bound = '1';
+        const go = ev => {
+          if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+          document.querySelector('.nav-item[data-page="' + target + '"]')?.click();
+          if (window.innerWidth <= 992) $('sidebar')?.classList.remove('active');
+        };
+        card.addEventListener('click', go);
+        card.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); }
+        });
+      }
+    });
+  }
+
+  /* ── Brightness toggle ────────────────────────────────────────── */
+  function initBrightness() {
+    const setMode = m => {
+      document.body.setAttribute('data-mode', m);
+      try { localStorage.setItem('jcompass_mode', m); } catch {}
+      document.querySelectorAll('.mode-chip-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.mode === m);
+      });
+    };
+    let saved = 'dark';
+    try { saved = localStorage.getItem('jcompass_mode') || 'dark'; } catch {}
+    setMode(saved);
+    document.querySelectorAll('.mode-chip-btn').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => setMode(btn.dataset.mode));
+    });
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     LAYOUT: topbar bell, profile pill, hamburger in workspace tray
+     ══════════════════════════════════════════════════════════════════ */
   function buildLayout() {
     const sidebar = $('sidebar');
     const topRight = document.querySelector('.topbar-right');
     if (!sidebar) return;
 
-    const brand = sidebar.querySelector('.sidebar-brand');
-    if (brand && !$('brandLogoSlot')) {
-      brand.querySelector('.brand-icon')?.remove();
-      const slot = Utils.el('div', { class: 'brand-logo-slot', id: 'brandLogoSlot' });
-      const img = Utils.el('img', { src: 'favicon.ico', alt: 'JCompass logo' });
-      img.onerror = () => { img.remove(); slot.appendChild(Utils.el('span', { class: 'brand-logo-placeholder' }, '🧭')); };
-      slot.appendChild(img);
-      brand.insertBefore(slot, brand.firstChild);
+    /* ── Bell in the topbar ────────────────────────────────────── */
+    if (topRight && !$('topbarBell')) {
+      const bell = Utils.el('button', {
+        type: 'button', class: 'topbar-bell', id: 'topbarBell',
+        title: 'Notifications', 'aria-label': 'Notifications'
+      });
+      bell.appendChild(document.createTextNode('🔔'));
+      bell.appendChild(Utils.el('b', { class: 'bell-badge', id: 'bellBadge', hidden: true }, '0'));
+      bell.onclick = openBell;
+      topRight.appendChild(bell);
     }
 
+    /* ── Profile pill (avatar + name, no hamburger) ───────────── */
     if (topRight && !$('topbarProfileBtn')) {
-      const btn = Utils.el('button', { type: 'button', class: 'topbar-menu-btn', id: 'topbarProfileBtn' });
-      btn.appendChild(Utils.el('div', { class: 'hamburger-icon' }, [Utils.el('span'), Utils.el('span'), Utils.el('span')]));
+      const btn = Utils.el('button', {
+        type: 'button', class: 'topbar-menu-btn', id: 'topbarProfileBtn',
+        title: 'Open workspace settings'
+      });
       btn.appendChild(Utils.el('div', { class: 'topbar-avatar', id: 'topbarAvatar' }, 'JC'));
       btn.appendChild(Utils.el('span', { class: 'topbar-name', id: 'topbarName' }, 'Loading…'));
       btn.onclick = () => $('settingsSidebarBtn')?.click();
       topRight.appendChild(btn);
     }
 
-    $('menuToggle')?.classList.remove('avatar-toggle');
-    $('userAvatarBtn')?.classList.add('chip-hidden');
+    /* ── Hamburger inside the workspace controls tray ─────────── */
+    const trayHeader = document.querySelector('.control-tray .tray-header');
+    if (trayHeader && !$('trayHamburger')) {
+      const hb = Utils.el('button', {
+        type: 'button', class: 'tray-hamburger', id: 'trayHamburger',
+        title: 'Toggle navigation', 'aria-label': 'Toggle navigation'
+      });
+      hb.appendChild(Utils.el('div', { class: 'hamburger-icon' }, [
+        Utils.el('span'), Utils.el('span'), Utils.el('span')
+      ]));
+      hb.onclick = () => {
+        $('controlTray')?.classList.remove('active');
+        $('controlTrayOverlay')?.classList.remove('active');
+        $('sidebar')?.classList.add('active');
+      };
+      trayHeader.insertBefore(hb, trayHeader.firstChild);
+    }
 
+    /* ── Hide old topbar chip, remove old sidebar bell ─────────── */
+    $('userAvatarBtn')?.classList.add('chip-hidden');
+    $('sideBell')?.remove();
+
+    /* ── Mirror name / avatar from hidden elements ────────────── */
     const mirror = () => {
       const g = id => ($(id) || {}).textContent || '';
-      const av = $('topbarAvatar'); const nm = $('topbarName');
+      const av = $('topbarAvatar');
+      const nm = $('topbarName');
       if (av) av.textContent = g('avatarBadgeIcon') || 'JC';
       if (nm) nm.textContent = g('displayName') || 'User';
     };
@@ -62,18 +205,9 @@
       }
     });
     mirror();
-
-    const nav = sidebar.querySelector('.sidebar-nav');
-    if (nav && !$('sideBell')) {
-      const bell = Utils.el('button', { class: 'side-bell', id: 'sideBell', type: 'button' });
-      bell.appendChild(document.createTextNode('🔔 '));
-      bell.appendChild(Utils.el('span', {}, 'Notifications'));
-      bell.appendChild(Utils.el('b', { class: 'bell-badge', id: 'bellBadge', hidden: true }, '0'));
-      bell.onclick = openBell;
-      nav.appendChild(bell);
-    }
   }
 
+  /* ── Bell badge + open logic ──────────────────────────────────── */
   const SEEN = 'jcompass_bell_seen';
   const num = a => parseInt(String(a.id).replace('remote-', ''), 10) || 0;
   const currentUserName = () => window.JC.Session.user()?.name || null;
@@ -102,74 +236,13 @@
     document.querySelector('.nav-item[data-page="dashboard"]')?.click();
     $('sidebar')?.classList.remove('active');
     setTimeout(() => $('announcementsStreamContainer')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
-  }
-
-  let paused = false, waiting = false;
-  function tickScroll() {
-    const c = $('announcementsStreamContainer');
-    if (c && !paused && !waiting && c.scrollHeight > c.clientHeight + 2) {
-      if (c.scrollTop + c.clientHeight >= c.scrollHeight - 1) {
-        waiting = true;
-        setTimeout(() => { c.scrollTop = 0; setTimeout(() => { waiting = false; }, 500); }, 500);
-      } else c.scrollTop += 0.6;
-    }
-    requestAnimationFrame(tickScroll);
-  }
-
-  function buildCabinetStats() {
-    const grid = document.querySelector('.stats-grid');
-    if (!grid) return;
-    grid.classList.add('cabinet-stats');
-
-    const targetMap = {
-      statActiveProjects: 'dashboard', statOverdue: 'calendar',
-      statDueSoon: 'calendar', statStaffCount: 'users', statTodayCheckins: 'attend'
-    };
-    const isStaff = window.JC.Session.user()?.role !== 'ADMIN';
-
-    grid.querySelectorAll('.stat-card').forEach(card => {
-      const valEl = card.querySelector('.stat-value');
-      if (!valEl) return;
-      const id = valEl.id;
-
-      if (id === 'statStaffCount' && isStaff) { card.style.display = 'none'; return; }
-      card.style.display = '';
-
-      const target = targetMap[id];
-      if (!target) return;
-      card.style.cursor = 'pointer';
-      card.setAttribute('role', 'button');
-      card.setAttribute('tabindex', '0');
-
-      if (!card.dataset.bound) {
-        card.dataset.bound = '1';
-        const go = ev => {
-          if (ev) { ev.preventDefault(); ev.stopPropagation(); }
-          document.querySelector('.nav-item[data-page="' + target + '"]')?.click();
-          if (window.innerWidth <= 992) $('sidebar')?.classList.remove('active');
-        };
-        card.addEventListener('click', go);
-        card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } });
-      }
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async OS => {
+      try { if (!OS.Notifications.permission) await OS.Notifications.requestPermission(); } catch {}
     });
   }
 
-  function initBrightness() {
-    const setMode = m => {
-      document.body.setAttribute('data-mode', m);
-      try { localStorage.setItem('jcompass_mode', m); } catch {}
-      document.querySelectorAll('.mode-chip-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
-    };
-    let saved = 'dark';
-    try { saved = localStorage.getItem('jcompass_mode') || 'dark'; } catch {}
-    setMode(saved);
-    document.querySelectorAll('.mode-chip-btn').forEach(btn => {
-      if (btn.dataset.bound) return;
-      btn.dataset.bound = '1';
-      btn.addEventListener('click', () => setMode(btn.dataset.mode));
-    });
-  }
-
+  /* ── Init ─────────────────────────────────────────────────────── */
   function init() {
     const nameIn = $('sidebarNameInput'); const save = $('saveNameBtn');
     if (nameIn) { nameIn.readOnly = true; nameIn.disabled = true; }
@@ -194,6 +267,7 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
+  /* ── Wrap functions to keep cabinet + bell fresh ──────────────── */
   const origStats = window.generateDashboardStats;
   if (origStats) {
     window.generateDashboardStats = function () { origStats.apply(this, arguments); buildCabinetStats(); };
@@ -204,6 +278,7 @@
     window[fn] = function () { orig.apply(this, arguments); buildLayout(); updateBadge(); };
   });
 
+  /* ── Re-wire brightness chips when the tray opens ─────────────── */
   document.addEventListener('click', e => {
     if (e.target.closest('.settings-sidebar-btn, #settingsGearBtn, #userAvatarBtn, #topbarProfileBtn')) {
       setTimeout(initBrightness, 50);

@@ -11,7 +11,9 @@
         <div class="auth-graphic-side">
           <div class="graphic-gradient-overlay"></div>
           <div class="graphic-content">
-            <div class="graphic-logo">🧭</div>
+            <div class="graphic-logo">
+              <img src="favicon.ico" alt="Journalist's Compass" onerror="this.replaceWith('🧭')">
+            </div>
             <h2 class="graphic-title">Journalist's Compass</h2>
             <p class="graphic-tagline">Centralized secure terminal for operations telemetry, editorial dispatch pipelines, and field correspondence networks.</p>
             <div class="graphic-badge-row">
