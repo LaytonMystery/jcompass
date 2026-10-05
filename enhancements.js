@@ -1,9 +1,6 @@
 /* ══════════════════════════════════════════════════════════════════════
-   JCompass add-on — v6.2
+   JCompass add-on — v6.3
    Load AFTER app.js.
-   • Topbar bell toggles notification permission (no more badge)
-   • Mobile hamburger replaced with logo
-   • Bell vertically aligned with profile pill
    ══════════════════════════════════════════════════════════════════════ */
 
 (function () {
@@ -139,14 +136,11 @@
     const perm = supported ? Notification.permission : 'unsupported';
 
     bell.classList.remove('bell-on', 'bell-off', 'bell-blocked');
-    bell.innerHTML = '';
-    bell.appendChild(document.createTextNode((!supported || perm === 'denied') ? '🔕' : '🔔'));
+    bell.textContent = (!supported || perm === 'denied') ? '🔕' : '🔔';
 
     if (!supported || perm === 'denied') {
       bell.classList.add('bell-blocked');
-      bell.title = supported
-        ? 'Notifications blocked — enable in browser settings'
-        : 'Notifications not supported';
+      bell.title = supported ? 'Notifications blocked' : 'Notifications not supported';
     } else if (perm === 'granted') {
       bell.classList.add('bell-on');
       bell.title = 'Notifications enabled';
@@ -164,7 +158,7 @@
     }
     if (Notification.permission === 'granted') {
       if (typeof triggerNotificationToast === 'function')
-        triggerNotificationToast('Notifications already enabled. Disable them in your browser settings.');
+        triggerNotificationToast('Notifications already enabled. Disable them in browser settings.');
       return;
     }
     if (Notification.permission === 'denied') {
@@ -179,73 +173,52 @@
         triggerNotificationToast('✓ Notifications enabled.');
       const u = window.JC.Session.user();
       if (u && typeof setOneSignalUser === 'function') setOneSignalUser(u.name).catch(() => {});
-    } else {
-      if (typeof triggerNotificationToast === 'function')
-        triggerNotificationToast('Notifications were not enabled.');
     }
   }
 
   /* ══════════════════════════════════════════════════════════════
-     Layout — bell, profile pill, tray hamburger, mobile logo
+     Layout
      ══════════════════════════════════════════════════════════════ */
-function buildLayout() {
-  const sidebar = $('sidebar');
-  const topRight = document.querySelector('.topbar-right');
-  if (!sidebar) return;
+  function buildLayout() {
+    const sidebar = $('sidebar');
+    const topRight = document.querySelector('.topbar-right');
+    if (!sidebar) return;
 
-  /* ── Deduplicate: keep only the first sidebar-brand ─────────────── */
-  const brands = sidebar.querySelectorAll('.sidebar-brand');
-  brands.forEach((b, i) => {
-    if (i > 0) { b.remove(); return; }
-    // Within the surviving brand, remove any duplicate slot or name
-    const slots = b.querySelectorAll('.brand-logo-slot');
-    slots.forEach((s, j) => { if (j > 0) s.remove(); });
-    const names = b.querySelectorAll('.brand-name');
-    names.forEach((n, j) => { if (j > 0) n.remove(); });
-    b.querySelectorAll('.brand-icon').forEach(el => el.remove());
+    /* Deduplicate sidebar brand */
+    const brands = sidebar.querySelectorAll('.sidebar-brand');
+    brands.forEach((b, i) => {
+      if (i > 0) { b.remove(); return; }
+      const slots = b.querySelectorAll('.brand-logo-slot');
+      slots.forEach((s, j) => { if (j > 0) s.remove(); });
+      const names = b.querySelectorAll('.brand-name');
+      names.forEach((n, j) => { if (j > 0) n.remove(); });
+      b.querySelectorAll('.brand-icon').forEach(el => el.remove());
 
-    // Ensure exactly one slot exists
-    if (!b.querySelector('.brand-logo-slot')) {
-      const slot = Utils.el('div', { class: 'brand-logo-slot', id: 'brandLogoSlot' });
-      const img = Utils.el('img', { src: 'favicon.ico', alt: 'JCompass logo' });
-      img.onerror = () => { img.remove(); slot.appendChild(Utils.el('span', { class: 'brand-logo-placeholder' }, '🧭')); };
-      slot.appendChild(img);
-      b.insertBefore(slot, b.firstChild);
-    }
-    // Ensure exactly one name exists
-    if (!b.querySelector('.brand-name')) {
-      b.appendChild(Utils.el('h1', { class: 'brand-name' }, "Journalist's Compass"));
-    }
-  });
-
-  /* ── Topbar bell ─────────────────────────────────────────────── */
-  if (topRight && !$('topbarBell')) {
-    // ... rest of the buildLayout function stays as-is from my last message
-  }
-  // ...
-}
-
-/* Sidebar brand slot — only add if neither the ID nor the class is present */
-const brand = sidebar.querySelector('.sidebar-brand');
-if (brand && !brand.querySelector('.brand-logo-slot')) {
-  brand.querySelector('.brand-icon')?.remove();
-  const slot = Utils.el('div', { class: 'brand-logo-slot', id: 'brandLogoSlot' });
-  const img = Utils.el('img', { src: 'favicon.ico', alt: 'JCompass logo' });
-  img.onerror = () => { img.remove(); slot.appendChild(Utils.el('span', { class: 'brand-logo-placeholder' }, '🧭')); };
-  slot.appendChild(img);
-  brand.insertBefore(slot, brand.firstChild);
-}
+      if (!b.querySelector('.brand-logo-slot')) {
+        const slot = Utils.el('div', { class: 'brand-logo-slot', id: 'brandLogoSlot' });
+        const img = Utils.el('img', { src: 'favicon.ico', alt: 'JCompass logo' });
+        img.onerror = () => { img.remove(); slot.appendChild(Utils.el('span', { class: 'brand-logo-placeholder' }, '🧭')); };
+        slot.appendChild(img);
+        b.insertBefore(slot, b.firstChild);
+      }
+      if (!b.querySelector('.brand-name')) {
+        b.appendChild(Utils.el('h1', { class: 'brand-name' }, "Journalist's Compass"));
+      }
+    });
 
     /* Topbar bell */
-    if (topRight && !$('topbarBell')) {
-      const bell = Utils.el('button', {
-        type: 'button', class: 'topbar-bell', id: 'topbarBell',
-        title: 'Enable notifications', 'aria-label': 'Notifications'
-      });
-      bell.onclick = toggleBellNotifications;
-      topRight.insertBefore(bell, topRight.firstChild);
+    if (topRight) {
+      let bell = $('topbarBell');
+      if (!bell) {
+        bell = Utils.el('button', {
+          type: 'button', class: 'topbar-bell', id: 'topbarBell',
+          title: 'Enable notifications', 'aria-label': 'Notifications'
+        });
+        bell.onclick = toggleBellNotifications;
+        topRight.insertBefore(bell, topRight.firstChild);
+      }
+      updateBellUI();
     }
-    updateBellUI();
 
     /* Profile pill */
     if (topRight && !$('topbarProfileBtn')) {
@@ -259,7 +232,13 @@ if (brand && !brand.querySelector('.brand-logo-slot')) {
       topRight.appendChild(btn);
     }
 
-    /* Hamburger inside the workspace tray */
+    /* Hide original user chip */
+    $('userAvatarBtn')?.classList.add('chip-hidden');
+
+    /* Remove old sidebar bell */
+    $('sideBell')?.remove();
+
+    /* Tray hamburger */
     const trayHeader = document.querySelector('.control-tray .tray-header');
     if (trayHeader && !$('trayHamburger')) {
       const hb = Utils.el('button', {
@@ -288,11 +267,7 @@ if (brand && !brand.querySelector('.brand-logo-slot')) {
       menuBtn.appendChild(img);
     }
 
-    /* Legacy cleanup */
-    $('userAvatarBtn')?.classList.add('chip-hidden');
-    $('sideBell')?.remove();
-
-    /* Mirror name + avatar */
+    /* Mirror name / avatar */
     const mirror = () => {
       const g = id => ($(id) || {}).textContent || '';
       const av = $('topbarAvatar'); const nm = $('topbarName');
@@ -352,7 +327,6 @@ if (brand && !brand.querySelector('.brand-logo-slot')) {
     }
   }, true);
 
-  // Re-check permission when the tab regains focus
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') updateBellUI();
   });
