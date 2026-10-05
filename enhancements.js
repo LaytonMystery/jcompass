@@ -193,16 +193,16 @@
     const topRight = document.querySelector('.topbar-right');
     if (!sidebar) return;
 
-    /* Sidebar brand slot */
-    const brand = sidebar.querySelector('.sidebar-brand');
-    if (brand && !$('brandLogoSlot')) {
-      brand.querySelector('.brand-icon')?.remove();
-      const slot = Utils.el('div', { class: 'brand-logo-slot', id: 'brandLogoSlot' });
-      const img = Utils.el('img', { src: 'favicon.ico', alt: 'JCompass logo' });
-      img.onerror = () => { img.remove(); slot.appendChild(Utils.el('span', { class: 'brand-logo-placeholder' }, '🧭')); };
-      slot.appendChild(img);
-      brand.insertBefore(slot, brand.firstChild);
-    }
+/* Sidebar brand slot — only add if neither the ID nor the class is present */
+const brand = sidebar.querySelector('.sidebar-brand');
+if (brand && !brand.querySelector('.brand-logo-slot')) {
+  brand.querySelector('.brand-icon')?.remove();
+  const slot = Utils.el('div', { class: 'brand-logo-slot', id: 'brandLogoSlot' });
+  const img = Utils.el('img', { src: 'favicon.ico', alt: 'JCompass logo' });
+  img.onerror = () => { img.remove(); slot.appendChild(Utils.el('span', { class: 'brand-logo-placeholder' }, '🧭')); };
+  slot.appendChild(img);
+  brand.insertBefore(slot, brand.firstChild);
+}
 
     /* Topbar bell */
     if (topRight && !$('topbarBell')) {

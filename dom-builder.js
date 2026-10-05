@@ -8,9 +8,11 @@
     <aside class="sidebar" id="sidebar">
       <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close navigation">✕</button>
     <div class="sidebar-brand">
-    <div class="brand-logo-slot">
+  <div class="brand-logo-slot" id="brandLogoSlot">
     <img src="favicon.ico" alt="JCompass" onerror="this.replaceWith('🧭')">
-    </div>
+  </div>
+  <h1 class="brand-name">Journalist's Compass</h1>
+</div>
   <h1 class="brand-name">Journalist's Compass</h1>
   </div>
       <nav class="sidebar-nav">
