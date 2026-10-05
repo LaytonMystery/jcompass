@@ -1,11 +1,8 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v6.0                                          ║
- * ║  · HMAC-signed server sessions                                      ║
- * ║  · Escaped HTML everywhere                                          ║
- * ║  · Supabase Storage for uploads                                     ║
- * ║  · Single realtime channel + parallel sync                          ║
- * ║  · Team Members tile hidden for STAFF                               ║
+ * ║  JOURNALIST'S COMPASS v6.2                                          ║
+ * ║  · Editor in Chief role (admin minus user management)               ║
+ * ║  · HMAC-signed sessions · escaped HTML · Supabase Storage           ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
@@ -60,6 +57,10 @@ function wipeLegacyCache() {
 let currentUser = null;
 let supabaseClient = null;
 let realtimeChannel = null;
+
+const PRIVILEGED_ROLES = ['ADMIN', 'EDITOR'];
+const isPrivileged = () => !!currentUser && PRIVILEGED_ROLES.includes(currentUser.role);
+const isAdmin = () => !!currentUser && currentUser.role === 'ADMIN';
 
 let currentFilter = 'ALL';
 let searchQuery = '';
@@ -129,21 +130,40 @@ async function syncAllDataFromSupabase() {
   console.log('🔄 Syncing (parallel)…');
   const token = Session.getToken();
 
+  async function retryOnce(fn, label) {
+    try { return await fn(); }
+    catch (e1) {
+      if (e1 && e1.name === 'AbortError') {
+        console.warn('Retrying ' + label + ' after AbortError…');
+        await new Promise(r => setTimeout(r, 400));
+        return await fn();
+      }
+      throw e1;
+    }
+  }
+
   const jobs = [
-    supabaseClient.from('projects').select('*').order('id', { ascending: true }),
-    supabaseClient.from('deployments').select('*').order('id', { ascending: true }),
-    supabaseClient.from('assignments').select('*').order('id', { ascending: false }),
-    supabaseClient.from('events').select('*').order('id', { ascending: true }),
-    supabaseClient.from('sources').select('*').order('id', { ascending: true }),
-    supabaseClient.from('archive_requests').select('*').order('id', { ascending: true }),
-    supabaseClient.from('audit_log').select('*').order('created_at', { ascending: false }).limit(500),
-    supabaseClient.from('attendance').select('*').order('created_at', { ascending: false }).limit(500),
-    supabaseClient.from('pings').select('*').order('created_at', { ascending: true }),
-    supabaseClient.rpc('list_users', { p_token: token }),
+    () => supabaseClient.from('projects').select('*').order('id', { ascending: true }),
+    () => supabaseClient.from('deployments').select('*').order('id', { ascending: true }),
+    () => supabaseClient.from('assignments').select('*').order('id', { ascending: false }),
+    () => supabaseClient.from('events').select('*').order('id', { ascending: true }),
+    () => supabaseClient.from('sources').select('*').order('id', { ascending: true }),
+    () => supabaseClient.from('archive_requests').select('*').order('id', { ascending: true }),
+    () => supabaseClient.from('audit_log').select('*').order('created_at', { ascending: false }).limit(500),
+    () => supabaseClient.from('attendance').select('*').order('created_at', { ascending: false }).limit(500),
+    () => supabaseClient.from('pings').select('*').order('created_at', { ascending: true }),
+    () => supabaseClient.rpc('list_users', { p_token: token })
   ];
 
-  const results = await Promise.allSettled(jobs);
-  const pick = i => results[i].status === 'fulfilled' ? results[i].value : { data: null, error: results[i].reason };
+  const labels = ['projects','deployments','assignments','events','sources','archive_requests','audit_log','attendance','pings','users'];
+
+  const results = await Promise.allSettled(
+    jobs.map((fn, i) => retryOnce(fn, labels[i]))
+  );
+
+  const pick = i => results[i].status === 'fulfilled'
+    ? results[i].value
+    : { data: null, error: results[i].reason };
   const b = Utils.bool;
 
   {
@@ -259,7 +279,7 @@ async function syncAllDataFromSupabase() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   SECTION 5: REALTIME — single channel
+   SECTION 5: REALTIME
    ═══════════════════════════════════════════════════════════════════════ */
 
 function subscribeRealtime() {
@@ -324,7 +344,9 @@ function subscribeRealtime() {
       updateAttendanceButtons();
     })
     .subscribe(status => {
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+      if (status === 'SUBSCRIBED') {
+        console.log('✅ Live channel connected.');
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
         console.warn('Realtime dropped, retrying…', status);
         setTimeout(subscribeRealtime, 3000);
       }
@@ -429,13 +451,18 @@ function evaluateClearancePermissions() {
   if (tRole)  tRole.innerText  = currentUser.role;
   if (aBadge) aBadge.innerText = currentUser.code || 'JC';
 
+  const showAdminNav = isPrivileged();
   document.querySelectorAll('.admin-only-nav').forEach(el => {
-    el.style.display = (currentUser.role === 'ADMIN') ? '' : 'none';
+    el.style.display = showAdminNav ? '' : 'none';
   });
 
-  // Team Members stat — hidden for STAFF
+  // Hide admin-only action buttons from editors
+  document.querySelectorAll('[data-admin-only]').forEach(el => {
+    el.style.display = isAdmin() ? '' : 'none';
+  });
+
   const staffCard = document.getElementById('statStaffCountParent');
-  if (staffCard) staffCard.style.display = (currentUser.role === 'ADMIN') ? '' : 'none';
+  if (staffCard) staffCard.style.display = showAdminNav ? '' : 'none';
 
   const pingSelect = document.getElementById('announcePingTarget');
   if (pingSelect) {
@@ -618,7 +645,6 @@ function openProjectProfile(projectId) {
       subBtn.innerText = '📤 Submit Output';
     }
 
-    // Re-bind the download link
     subInfo.querySelectorAll('[data-download-file]').forEach(a => {
       a.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -645,29 +671,29 @@ function openProjectProfile(projectId) {
 }
 
 function applyProfilePermissions(p) {
-  const isAdmin = currentUser.role === 'ADMIN';
+  const canEdit = isPrivileged();
   const archiveBtn  = document.getElementById('profileArchiveBtn');
   const deleteBtn   = document.getElementById('profileDeleteBtn');
   const requestBtn  = document.getElementById('profileRequestArchiveBtn');
   const staffNotice = document.getElementById('profileStaffNotice');
   const saveBtn     = document.getElementById('profileSaveBtn');
 
-  if (archiveBtn)  archiveBtn.style.display  = isAdmin ? '' : 'none';
-  if (deleteBtn)   deleteBtn.style.display   = isAdmin ? '' : 'none';
-  if (saveBtn)     saveBtn.style.display     = isAdmin ? '' : 'none';
-  if (staffNotice) staffNotice.style.display = isAdmin ? 'none' : 'flex';
+  if (archiveBtn)  archiveBtn.style.display  = canEdit ? '' : 'none';
+  if (deleteBtn)   deleteBtn.style.display   = canEdit ? '' : 'none';
+  if (saveBtn)     saveBtn.style.display     = canEdit ? '' : 'none';
+  if (staffNotice) staffNotice.style.display = canEdit ? 'none' : 'flex';
 
   ['profileProgressInput','profileAssignedReporter','profileNotes','profileTags','profileStatusSelect']
-    .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = !isAdmin; });
+    .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = !canEdit; });
 
   document.querySelectorAll('.priority-select-btn').forEach(btn => {
-    btn.disabled = !isAdmin;
-    btn.style.cursor = isAdmin ? 'pointer' : 'not-allowed';
-    btn.style.opacity = isAdmin ? '1' : '0.5';
+    btn.disabled = !canEdit;
+    btn.style.cursor = canEdit ? 'pointer' : 'not-allowed';
+    btn.style.opacity = canEdit ? '1' : '0.5';
   });
 
   if (requestBtn) {
-    if (isAdmin) requestBtn.style.display = 'none';
+    if (canEdit) requestBtn.style.display = 'none';
     else {
       const hasPending = archiveRequests.some(r => r.project_id === p.id && r.requester === currentUser.name && r.status === 'PENDING');
       requestBtn.style.display = '';
@@ -680,7 +706,7 @@ function applyProfilePermissions(p) {
 async function saveProjectProfile() {
   const p = projects.find(x => x.id === activeProfileId);
   if (!p) return;
-  if (currentUser.role !== 'ADMIN') { triggerNotificationToast('Admin access required.'); return; }
+  if (!isPrivileged()) { triggerNotificationToast('Admin access required.'); return; }
   const activePriorityBtn = document.querySelector('.priority-select-btn.active');
   const priority = activePriorityBtn ? activePriorityBtn.dataset.priority : 'MEDIUM';
   const updates = {
@@ -707,7 +733,7 @@ async function saveProjectProfile() {
 }
 
 async function archiveProject(projectId) {
-  if (!currentUser || currentUser.role !== 'ADMIN') { triggerNotificationToast('Admin access required.'); return; }
+  if (!isPrivileged()) { triggerNotificationToast('Admin access required.'); return; }
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
   if (!confirm('Archive "' + p.title + '"?')) return;
@@ -727,7 +753,7 @@ async function archiveProject(projectId) {
 }
 
 async function deleteProject(projectId) {
-  if (!currentUser || currentUser.role !== 'ADMIN') { triggerNotificationToast('Admin access required.'); return; }
+  if (!isPrivileged()) { triggerNotificationToast('Admin access required.'); return; }
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
   if (!confirm('Permanently delete "' + p.title + '"?')) return;
@@ -846,7 +872,7 @@ async function submitArchiveRequest(projectId) {
 }
 
 async function approveArchiveRequest(requestId) {
-  if (currentUser.role !== 'ADMIN') return;
+  if (!isPrivileged()) return;
   const req = archiveRequests.find(r => r.id === requestId);
   if (!req) return;
   if (!confirm('Approve this request?')) return;
@@ -868,7 +894,7 @@ async function approveArchiveRequest(requestId) {
 }
 
 async function denyArchiveRequest(requestId) {
-  if (currentUser.role !== 'ADMIN') return;
+  if (!isPrivileged()) return;
   const req = archiveRequests.find(r => r.id === requestId);
   if (!req) return;
   if (!confirm('Deny this archive request?')) return;
@@ -900,7 +926,7 @@ function renderArchiveRequestsPanel() {
   ensureArchiveRequestsPanel();
   const panel = document.getElementById('archiveRequestsPanel');
   if (!panel) return;
-  if (!currentUser || currentUser.role !== 'ADMIN') { panel.style.display = 'none'; return; }
+  if (!isPrivileged()) { panel.style.display = 'none'; return; }
   const pending = archiveRequests.filter(r => r.status === 'PENDING');
   if (pending.length === 0) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
@@ -935,15 +961,15 @@ function generateAnnouncementsStream() {
   if (!container) return;
   container.innerHTML = '';
   const reversed = [...announcements].reverse();
-  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+  const canSeeAll = isPrivileged();
 
   reversed.forEach(ann => {
     const isPingedToMe = currentUser && ann.target === currentUser.name;
     const isBroadcastAll = ann.target === 'ALL';
     const isMine = currentUser && ann.sender === currentUser.name;
-    if (!isBroadcastAll && !isPingedToMe && !isAdmin) return;
+    if (!isBroadcastAll && !isPingedToMe && !canSeeAll) return;
 
-    const canDelete = isAdmin || isMine;
+    const canDelete = canSeeAll || isMine;
     const node = document.createElement('div');
     node.className = 'announcement-node' + (isPingedToMe ? ' pinged' : '');
     node.innerHTML =
@@ -1013,7 +1039,7 @@ function generateDeploymentsGrid() {
   if (!container) return;
   container.innerHTML = '';
   const visible = deployments.filter(d => !d.archived);
-  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+  const canManage = isPrivileged();
 
   if (visible.length === 0) {
     container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No field operations yet.</div>';
@@ -1036,7 +1062,7 @@ function generateDeploymentsGrid() {
           esc(d.description.substring(0, 120)) + (d.description.length > 120 ? '…' : '') + '</div>'
         : '') +
       '<div class="card-actions"><button class="card-action-btn deployment-view-btn" data-deployment-id="' + esc(d.id) + '" type="button">📡 View Details</button></div>' +
-      (isAdmin ? '<div class="card-action-row"><button class="card-action-btn archive-btn" data-deployment-archive="' + esc(d.id) + '" type="button">🗄 Archive</button></div>' : '') +
+      (canManage ? '<div class="card-action-row"><button class="card-action-btn archive-btn" data-deployment-archive="' + esc(d.id) + '" type="button">🗄 Archive</button></div>' : '') +
       formatCreatedBy({ creator: d.createdBy, created_at: d.created_at });
     container.appendChild(card);
   });
@@ -1076,7 +1102,7 @@ function openDeploymentProfile(deploymentId) {
   const d = deployments.find(x => x.id === deploymentId);
   if (!d) return;
   activeDeploymentId = deploymentId;
-  const isAdmin = currentUser.role === 'ADMIN';
+  const canManage = isPrivileged();
   const reporters = (d.reporter || '').split(',').map(r => r.trim()).filter(r => r);
 
   document.getElementById('deploymentModalCategory').innerText = 'FIELD OPERATION · ' + d.priority;
@@ -1096,10 +1122,10 @@ function openDeploymentProfile(deploymentId) {
 
   const actions = document.getElementById('deploymentModalActions');
   actions.innerHTML =
-    (isAdmin ? '<button class="btn btn-ghost" id="pingDeployBtn" style="color:var(--accent-light);" type="button">🔔 Notify All</button>' : '') +
-    (isAdmin ? '<button class="btn btn-ghost" id="archiveDeployBtn" style="color:var(--warning);" type="button">🗄 Archive</button>' : '');
+    (canManage ? '<button class="btn btn-ghost" id="pingDeployBtn" style="color:var(--accent-light);" type="button">🔔 Notify All</button>' : '') +
+    (canManage ? '<button class="btn btn-ghost" id="archiveDeployBtn" style="color:var(--warning);" type="button">🗄 Archive</button>' : '');
 
-  if (isAdmin) {
+  if (canManage) {
     const pingBtn = document.getElementById('pingDeployBtn');
     if (pingBtn) pingBtn.addEventListener('click', async () => {
       if (reporters.length === 0) { triggerNotificationToast('No members assigned.'); return; }
@@ -1117,7 +1143,7 @@ function openDeploymentProfile(deploymentId) {
 }
 
 async function archiveDeployment(deploymentId) {
-  if (!currentUser || currentUser.role !== 'ADMIN') { triggerNotificationToast('Admin access required.'); return; }
+  if (!isPrivileged()) { triggerNotificationToast('Admin access required.'); return; }
   const d = deployments.find(x => x.id === deploymentId);
   if (!d) { triggerNotificationToast('Operation not found.'); return; }
   if (!confirm('Archive this operation?')) return;
@@ -1146,7 +1172,7 @@ function generateAssignmentsGrid() {
   container.innerHTML = '';
 
   const visible = assignments.filter(a => !a.archived);
-  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+  const canManage = isPrivileged();
 
   if (visible.length === 0) {
     container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No tasks yet.</div>';
@@ -1162,7 +1188,7 @@ function generateAssignmentsGrid() {
     if (a.status === 'REVIEWED')  statusBadge = '<span class="status-badge status-published">✓ REVIEWED</span>';
 
     const isAssignee = currentUser && currentUser.name.toLowerCase() === (a.assignee || '').toLowerCase();
-    const canView = isAssignee || isAdmin;
+    const canView = isAssignee || canManage;
 
     let actionBtn = '';
     if (canView) {
@@ -1185,7 +1211,7 @@ function generateAssignmentsGrid() {
       (a.due_date ? '<div style="font-size:0.8rem;color:var(--text-muted);">📅 Due: ' + esc(a.due_date) + '</div>' : '') +
       (a.submitted_by ? '<div style="font-size:0.78rem; color:#9ae6b4;">📎 Submitted by ' + esc(a.submitted_by) + ' on ' + esc(Utils.fmtDate(a.submitted_at)) + '</div>' : '') +
       (actionBtn ? '<div class="card-action-row">' + actionBtn + '</div>' : '') +
-      (isAdmin && a.status !== 'ARCHIVED' ? '<div class="card-action-row"><button class="card-action-btn archive-btn" data-asg-archive="' + esc(a.id) + '" type="button">🗄 Archive</button></div>' : '') +
+      (canManage && a.status !== 'ARCHIVED' ? '<div class="card-action-row"><button class="card-action-btn archive-btn" data-asg-archive="' + esc(a.id) + '" type="button">🗄 Archive</button></div>' : '') +
       formatCreatedBy({ creator: a.created_by, created_at: a.created_at });
     container.appendChild(card);
   });
@@ -1227,10 +1253,10 @@ function openSubmissionModal(assignmentId) {
   activeSubmissionId = assignmentId;
 
   const isAssignee = currentUser.name.toLowerCase() === (a.assignee || '').toLowerCase();
-  const isAdmin = currentUser.role === 'ADMIN';
+  const canManage = isPrivileged();
   const canSubmit = isAssignee && a.status === 'PENDING';
-  const canReview = isAdmin && a.status === 'SUBMITTED';
-  const isReadOnlyForAdmin = isAdmin && !isAssignee;
+  const canReview = canManage && a.status === 'SUBMITTED';
+  const isReadOnlyForAdmin = canManage && !isAssignee;
 
   document.getElementById('submissionModalCategory').innerText = 'TASK · ' + (a.priority || 'MEDIUM');
   document.getElementById('submissionModalTitle').innerText = a.title;
@@ -1792,7 +1818,7 @@ function initAttendancePage() {
 }
 
 async function clearAttendanceLog() {
-  if (currentUser.role !== 'ADMIN') { triggerNotificationToast('Admin access required.'); return; }
+  if (!isPrivileged()) { triggerNotificationToast('Admin access required.'); return; }
   if (!confirm('Clear ALL attendance records?')) return;
   if (supabaseClient) {
     try {
@@ -1822,7 +1848,7 @@ function generateArchiveGrid() {
   const archived = projects.filter(p => p.archived);
   if (countBadge) countBadge.innerText = archived.length + ' archived';
 
-  const isAdmin = currentUser && currentUser.role === 'ADMIN';
+  const canManage = isPrivileged();
 
   if (archived.length === 0) {
     container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No archived projects.</div>';
@@ -1836,7 +1862,7 @@ function generateArchiveGrid() {
       '<div class="card-category">' + esc(p.category || '') + '</div>' +
       '<div class="card-title">' + esc(p.title) + '</div>' +
       '<div class="card-meta"><span>📅 ' + esc(p.deadline || '—') + '</span><span>' + esc(p.status || '') + '</span></div>' +
-      (isAdmin ? '<div class="card-action-row">' +
+      (canManage ? '<div class="card-action-row">' +
         '<button class="card-action-btn restore-btn" data-archive-restore="' + esc(p.id) + '" type="button">↩ Restore</button>' +
         '<button class="card-action-btn delete-btn" data-archive-delete="' + esc(p.id) + '" type="button">🗑 Delete</button>' +
       '</div>' : '');
@@ -1884,7 +1910,7 @@ async function deleteArchivedProject(projectId) {
 }
 
 async function clearAllArchivedProjects() {
-  if (currentUser.role !== 'ADMIN') return;
+  if (!isPrivileged()) return;
   const archived = projects.filter(p => p.archived);
   if (archived.length === 0) { triggerNotificationToast('No archived projects.'); return; }
   if (!confirm('Delete ALL ' + archived.length + ' archived project(s)?')) return;
@@ -1926,7 +1952,7 @@ function generateArchiveReportsGrid() {
 }
 
 async function clearArchivedReports() {
-  if (currentUser.role !== 'ADMIN') return;
+  if (!isPrivileged()) return;
   if (archivedReports.length === 0) { triggerNotificationToast('No reports to clear.'); return; }
   if (!confirm('Clear all ' + archivedReports.length + ' reports?')) return;
   archivedReports = [];
@@ -1959,7 +1985,7 @@ function generateActivitySummaryGrid() {
 }
 
 async function clearActivitySummaries() {
-  if (currentUser.role !== 'ADMIN') return;
+  if (!isPrivileged()) return;
   if (activitySummaries.length === 0) { triggerNotificationToast('No summaries.'); return; }
   if (!confirm('Clear all summaries?')) return;
   activitySummaries = [];
@@ -1969,7 +1995,7 @@ async function clearActivitySummaries() {
 }
 
 function generateActivitySummaryReport() {
-  if (currentUser.role !== 'ADMIN') return;
+  if (!isPrivileged()) return;
   const now = new Date();
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const todayStr = Utils.todayLocalISO();
@@ -2014,7 +2040,7 @@ function generateSourcesGrid() {
   if (!container) return;
   container.innerHTML = '';
 
-  const teamMembers = registeredUsersDB.filter(u => u.role === 'STAFF' || u.role === 'ADMIN');
+  const teamMembers = registeredUsersDB.filter(u => u.role === 'STAFF' || u.role === 'ADMIN' || u.role === 'EDITOR');
   const q = sourceSearchQuery.toLowerCase();
   const filtered = teamMembers.filter(u => !q || u.name.toLowerCase().includes(q));
 
@@ -2084,6 +2110,13 @@ function generateUsersTable() {
   }
   registeredUsersDB.forEach(user => {
     const isSelf = currentUser && currentUser.name === user.name;
+    const canDelete = isAdmin() && !isSelf;
+    let actionCell = '<span style="color:var(--text-muted);font-size:0.72rem;">—</span>';
+    if (isSelf) {
+      actionCell = '<span style="color:var(--text-muted);font-size:0.72rem;">(You)</span>';
+    } else if (canDelete) {
+      actionCell = '<button class="user-row-delete-btn" data-uid="' + esc(user.id) + '" data-uname="' + esc(user.name) + '" type="button">🗑 Delete</button>';
+    }
     const tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
     tr.innerHTML =
@@ -2091,11 +2124,7 @@ function generateUsersTable() {
       '<td style="padding:0.9rem 1.25rem;font-weight:600;">' + esc(user.name) + '</td>' +
       '<td style="padding:0.9rem 1.25rem;">' + esc(user.role) + '</td>' +
       '<td style="padding:0.9rem 1.25rem;color:var(--text-muted);">' + esc(user.created || '—') + '</td>' +
-      '<td style="padding:0.9rem 1.25rem;text-align:right;">' +
-        (isSelf
-          ? '<span style="color:var(--text-muted);font-size:0.72rem;">(You)</span>'
-          : '<button class="user-row-delete-btn" data-uid="' + esc(user.id) + '" data-uname="' + esc(user.name) + '" type="button">🗑 Delete</button>') +
-      '</td>';
+      '<td style="padding:0.9rem 1.25rem;text-align:right;">' + actionCell + '</td>';
     tbody.appendChild(tr);
   });
   tbody.querySelectorAll('[data-uid]').forEach(btn =>
@@ -2103,6 +2132,7 @@ function generateUsersTable() {
 }
 
 async function createNewUser() {
+  if (!isAdmin()) { triggerNotificationToast('Only Administrators can create accounts.'); return; }
   const name = document.getElementById('newUserName').value.trim();
   const pass = document.getElementById('newUserPass').value.trim();
   const role = document.getElementById('newUserRole').value;
@@ -2134,6 +2164,7 @@ async function createNewUser() {
 }
 
 async function deleteUserFromAdmin(userId, userName) {
+  if (!isAdmin()) { triggerNotificationToast('Only Administrators can delete accounts.'); return; }
   if (currentUser && currentUser.name === userName) { triggerNotificationToast('Cannot delete yourself.'); return; }
   if (!confirm('Permanently delete "' + userName + '"?')) return;
   if (!supabaseClient) return;
@@ -2263,7 +2294,6 @@ function generateNotificationBar() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const dayKey = Utils.todayLocalISO();
 
-  // Drop yesterday's dismissals
   dismissedNoticeIds = dismissedNoticeIds.filter(id => id.startsWith(dayKey));
   cacheSave(CACHE_KEYS.dismissedNotices, dismissedNoticeIds);
 
@@ -2276,7 +2306,7 @@ function generateNotificationBar() {
   const notices = [];
   if (overdue.length > 0) notices.push({ id: dayKey + ':overdue-' + overdue.length, type: 'danger', icon: '⚠', text: overdue.length + ' project(s) overdue.' });
 
-  if (currentUser.role === 'ADMIN') {
+  if (isPrivileged()) {
     const pendingReqs = archiveRequests.filter(r => r.status === 'PENDING').length;
     if (pendingReqs > 0) notices.push({ id: dayKey + ':archive-reqs-' + pendingReqs, type: 'warning', icon: '📥', text: pendingReqs + ' archive request(s) awaiting review.' });
     const pendingSubmissions = assignments.filter(a => a.status === 'SUBMITTED' && !a.archived).length;
@@ -2307,7 +2337,7 @@ function generateNotificationBar() {
    ═══════════════════════════════════════════════════════════════════════ */
 
 function injectAdminClearButtons() {
-  if (!currentUser || currentUser.role !== 'ADMIN') return;
+  if (!isPrivileged()) return;
 
   const tryInject = (badgeId, count, btnId, label, handler) => {
     const badge = document.getElementById(badgeId);
@@ -2388,7 +2418,7 @@ function initTheme() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   SECTION 28: ONESIGNAL + PUSH (via Edge Function)
+   SECTION 28: ONESIGNAL + PUSH
    ═══════════════════════════════════════════════════════════════════════ */
 
 async function sendPushNotification(title, message, targetUserName = null) {
@@ -2430,7 +2460,6 @@ function initializeApp() {
   initTheme();
   wireControlTray();
 
-  // OneSignal (Capacitor path)
   if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
     try {
       const OneSignal = window.Capacitor.Plugins?.OneSignal || window.plugins?.OneSignal;
@@ -2444,7 +2473,6 @@ function initializeApp() {
 
   enforceSessionGuard();
 
-  /* ── Nav ────────────────────────────────────────────────────────── */
   document.querySelectorAll('.nav-item').forEach(nav => {
     nav.addEventListener('click', () => {
       document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
@@ -2461,7 +2489,6 @@ function initializeApp() {
     });
   });
 
-  /* ── Mobile sidebar ─────────────────────────────────────────────── */
   const sidebarEl = document.getElementById('sidebar');
   document.getElementById('menuToggle')?.addEventListener('click', () => sidebarEl?.classList.toggle('active'));
   document.getElementById('sidebarCloseBtn')?.addEventListener('click', () => sidebarEl?.classList.remove('active'));
@@ -2477,14 +2504,12 @@ function initializeApp() {
     if (window.innerWidth > 992 && sidebarEl) sidebarEl.classList.remove('active');
   });
 
-  /* ── Sign out ───────────────────────────────────────────────────── */
   document.getElementById('signOutBtn')?.addEventListener('click', () => {
     Session.logout();
     Utils.store.del('jcompass_user');
     window.location.replace(CONFIG.LOGIN_PAGE);
   });
 
-  /* ── Announce ───────────────────────────────────────────────────── */
   document.getElementById('submitAnnouncementBtn')?.addEventListener('click', () => {
     const input = document.getElementById('announceTextInput');
     const target = document.getElementById('announcePingTarget');
@@ -2493,14 +2518,12 @@ function initializeApp() {
     input.value = '';
   });
 
-  /* ── Attendance ─────────────────────────────────────────────────── */
   document.getElementById('checkInBtn')?.addEventListener('click', processCheckIn);
   document.getElementById('checkOutBtn')?.addEventListener('click', processCheckOut);
   document.getElementById('clearAttendanceBtn')?.addEventListener('click', clearAttendanceLog);
   document.getElementById('exportAttendanceBtn')?.addEventListener('click', exportAttendanceCSV);
   document.getElementById('quickExportCSVBtn')?.addEventListener('click', exportProjectsCSV);
 
-  /* ── Create project ─────────────────────────────────────────────── */
   document.getElementById('createProjectBtn')?.addEventListener('click', async () => {
     const title = document.getElementById('newTitle').value.trim();
     const category = document.getElementById('newCategory').value;
@@ -2529,11 +2552,9 @@ function initializeApp() {
 
   document.getElementById('saveUserBtn')?.addEventListener('click', createNewUser);
 
-  /* ── Notifications ──────────────────────────────────────────────── */
   refreshNotificationPermissionUI();
   document.getElementById('enableNotificationsBtn')?.addEventListener('click', requestNotificationPermission);
 
-  /* ── Calendar nav ───────────────────────────────────────────────── */
   document.getElementById('calPrevMonth')?.addEventListener('click', () => {
     calendarMonth--; if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
     generateDeadlineCalendarGrid();
@@ -2543,7 +2564,6 @@ function initializeApp() {
     generateDeadlineCalendarGrid();
   });
 
-  /* ── Filters ────────────────────────────────────────────────────── */
   document.querySelectorAll('.filter-chip').forEach(chip => {
     chip.addEventListener('click', () => {
       document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
@@ -2553,7 +2573,6 @@ function initializeApp() {
     });
   });
 
-  /* ── Search inputs ──────────────────────────────────────────────── */
   document.getElementById('dashboardSearchInput')?.addEventListener('input', (e) => {
     searchQuery = e.target.value; generateProjectDashboard();
   });
@@ -2567,10 +2586,8 @@ function initializeApp() {
     auditSearchQuery = e.target.value; renderAuditLogTable();
   });
 
-  /* ── Save project profile ───────────────────────────────────────── */
   document.getElementById('profileSaveBtn')?.addEventListener('click', saveProjectProfile);
 
-  /* ── Priority select + modal actions ────────────────────────────── */
   const projectModal = document.getElementById('projectProfileModal');
   if (projectModal) {
     projectModal.addEventListener('click', async (e) => {
@@ -2590,7 +2607,6 @@ function initializeApp() {
     });
   }
 
-  /* ── Modal close buttons ────────────────────────────────────────── */
   document.querySelectorAll('[data-close]').forEach(btn => {
     btn.addEventListener('click', () => {
       const m = document.getElementById(btn.getAttribute('data-close'));
@@ -2598,7 +2614,6 @@ function initializeApp() {
     });
   });
 
-  /* ── Deployment / assignment modals ─────────────────────────────── */
   document.getElementById('addBeatBtn')?.addEventListener('click', openDeploymentModal);
   document.getElementById('addAssignmentBtn')?.addEventListener('click', openAssignmentModal);
 
@@ -2615,7 +2630,6 @@ function initializeApp() {
     });
   });
 
-  /* ── Save deployment ────────────────────────────────────────────── */
   document.getElementById('saveBeatBtn')?.addEventListener('click', async () => {
     const title = document.getElementById('beatName').value.trim();
     const priority = document.getElementById('beatPriority').value;
@@ -2656,7 +2670,6 @@ function initializeApp() {
     triggerNotificationToast('✓ Deployed. Notified ' + selected.length + ' member(s).');
   });
 
-  /* ── Save assignment ────────────────────────────────────────────── */
   document.getElementById('saveAssignmentBtn')?.addEventListener('click', async () => {
     const title = document.getElementById('asgTitle').value.trim();
     const selectedRadio = document.querySelector('#assigneeRadioList input[name="assignee"]:checked');
@@ -2691,7 +2704,6 @@ function initializeApp() {
     triggerNotificationToast('✓ Task created for ' + assignee + '.');
   });
 
-  /* ── Save event ─────────────────────────────────────────────────── */
   document.getElementById('saveEventBtn')?.addEventListener('click', async () => {
     const name = document.getElementById('evtName').value.trim();
     const date = document.getElementById('evtDate').value || Utils.todayLocalISO();
@@ -2714,10 +2726,9 @@ function initializeApp() {
     triggerNotificationToast('Event added.');
   });
 
-  /* ── Activity summary ──────────────────────────────────────────── */
   document.getElementById('generateActivitySummaryBtn')?.addEventListener('click', generateActivitySummaryReport);
 
-  console.log('✅ JCompass initialized (v6.0)');
+  console.log('✅ JCompass initialized (v6.2)');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -2727,7 +2738,7 @@ function initializeApp() {
 (async function bootstrap() {
   try {
     const auth = await (window.JCOMPASS_AUTH_READY || Promise.resolve(null));
-    if (!auth || !auth.user) return; // auth-guard already redirected
+    if (!auth || !auth.user) return;
     currentUser = auth.user;
   } catch (e) {
     console.error('JCompass bootstrap:', e);
@@ -2741,7 +2752,6 @@ function initializeApp() {
   }
 })();
 
-// Re-sync when the tab becomes visible again
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState !== 'visible' || !currentUser) return;
   try {
@@ -2750,7 +2760,6 @@ document.addEventListener('visibilitychange', async () => {
   } catch (e) { console.warn('Catch-up sync failed:', e); }
 });
 
-// Expose for enhancements.js
 window.generateDashboardStats = generateDashboardStats;
 window.generateProjectDashboard = generateProjectDashboard;
 window.generateAnnouncementsStream = generateAnnouncementsStream;

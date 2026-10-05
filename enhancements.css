@@ -462,3 +462,26 @@ body[data-mode="light"] .stats-grid.cabinet-stats .stat-card:hover { background:
 body[data-mode="light"].login-page {
   background: radial-gradient(circle at 30% 20%, #1a2236 0%, #0d1017 100%) !important;
 }
+/* ══════════════════════════════════════════════════════════════════════
+   EDITOR IN CHIEF — same privileges as ADMIN except account management
+   ══════════════════════════════════════════════════════════════════════ */
+
+body[data-user-clearance="EDITOR"] .admin-exclusive-block {
+  display: block;
+}
+
+body[data-user-clearance="EDITOR"] .clearance-badge {
+  background: rgba(139, 92, 246, 0.22);
+  color: #ddd6fe;
+  border: 1px solid rgba(139, 92, 246, 0.42);
+}
+
+body[data-user-clearance="EDITOR"] [data-admin-only] {
+  display: none !important;
+}
+
+body[data-mode="light"][data-user-clearance="EDITOR"] .clearance-badge {
+  background: rgba(139, 92, 246, 0.15);
+  color: #6d28d9;
+  border-color: rgba(139, 92, 246, 0.3);
+}

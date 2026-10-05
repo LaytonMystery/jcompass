@@ -1,6 +1,7 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Dashboard DOM Builder v6.3
+ *  JCompass — Dashboard DOM Builder v6.4
+ *  · Editor in Chief role support
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
@@ -282,7 +283,7 @@
       <div class="page" id="page-users">
         <div class="section-header">
           <h2 class="section-title">User Management</h2>
-          <button class="btn btn-primary" id="addUserBtn" type="button">+ Create Account</button>
+          <button class="btn btn-primary" id="addUserBtn" type="button" data-admin-only>+ Create Account</button>
         </div>
         <p style="color:var(--text-muted); font-size:0.9rem; margin-top:-0.5rem;">Admin-only.</p>
         <div class="card" style="margin-top:1rem; padding:0; overflow:hidden;">
@@ -451,6 +452,7 @@
           <label class="form-label">Role</label>
           <select class="form-select" id="newUserRole">
             <option value="STAFF">Staff</option>
+            <option value="EDITOR">Editor in Chief</option>
             <option value="ADMIN">Administrator</option>
           </select>
         </div>
