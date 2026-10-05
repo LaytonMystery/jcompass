@@ -1,7 +1,7 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Dashboard DOM Builder v6.4
- *  · Editor in Chief role support
+ *  JCompass — Dashboard DOM Builder v6.5
+ *  · Editor in Chief role option in Create Account modal
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
