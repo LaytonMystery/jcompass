@@ -1,20 +1,18 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Dashboard DOM Builder v6.2
+ *  JCompass — Dashboard DOM Builder v6.3
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
   const UI = `
     <aside class="sidebar" id="sidebar">
       <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close navigation">✕</button>
-    <div class="sidebar-brand">
-  <div class="brand-logo-slot" id="brandLogoSlot">
-    <img src="favicon.ico" alt="JCompass" onerror="this.replaceWith('🧭')">
-  </div>
-  <h1 class="brand-name">Journalist's Compass</h1>
-</div>
-  <h1 class="brand-name">Journalist's Compass</h1>
-  </div>
+      <div class="sidebar-brand">
+        <div class="brand-logo-slot" id="brandLogoSlot">
+          <img src="favicon.ico" alt="JCompass" onerror="this.replaceWith('🧭')">
+        </div>
+        <h1 class="brand-name">Journalist's Compass</h1>
+      </div>
       <nav class="sidebar-nav">
         <ul class="nav-list">
           <li class="nav-item active" data-page="dashboard"><span class="nav-icon">⌂</span><span class="nav-label">Dashboard</span></li>
@@ -58,21 +56,14 @@
             <button class="mode-chip-btn" data-mode="light" type="button">☀️ Light</button>
           </div>
         </div>
-
-        <div class="customizer-field" style="margin-top: 1.25rem;">
-          <label class="customizer-label">Push Alerts</label>
-          <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0.15rem 0 0.6rem;">Get a device popup when someone messages you.</p>
-          <button id="enableNotificationsBtn" class="btn btn-ghost" style="width:100%; font-size:0.85rem;" type="button">🔔 Enable Push Alerts</button>
-          <div id="notificationStatusLabel" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 0.5rem;"></div>
-        </div>
       </div>
     </div>
 
     <main class="main-content">
       <header class="topbar">
-<button class="menu-toggle" id="menuToggle" type="button" aria-label="Open navigation">
-  <img src="favicon.ico" alt="JCompass" onerror="this.replaceWith('☰')">
-</button>
+        <button class="menu-toggle" id="menuToggle" type="button" aria-label="Open navigation">
+          <img src="favicon.ico" alt="JCompass" onerror="this.replaceWith('☰')">
+        </button>
         <div class="topbar-center">
           <span>JCompass</span>
           <span class="breadcrumb-sep">›</span>

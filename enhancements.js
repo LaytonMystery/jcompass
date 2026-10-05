@@ -188,10 +188,42 @@
   /* ══════════════════════════════════════════════════════════════
      Layout — bell, profile pill, tray hamburger, mobile logo
      ══════════════════════════════════════════════════════════════ */
-  function buildLayout() {
-    const sidebar = $('sidebar');
-    const topRight = document.querySelector('.topbar-right');
-    if (!sidebar) return;
+function buildLayout() {
+  const sidebar = $('sidebar');
+  const topRight = document.querySelector('.topbar-right');
+  if (!sidebar) return;
+
+  /* ── Deduplicate: keep only the first sidebar-brand ─────────────── */
+  const brands = sidebar.querySelectorAll('.sidebar-brand');
+  brands.forEach((b, i) => {
+    if (i > 0) { b.remove(); return; }
+    // Within the surviving brand, remove any duplicate slot or name
+    const slots = b.querySelectorAll('.brand-logo-slot');
+    slots.forEach((s, j) => { if (j > 0) s.remove(); });
+    const names = b.querySelectorAll('.brand-name');
+    names.forEach((n, j) => { if (j > 0) n.remove(); });
+    b.querySelectorAll('.brand-icon').forEach(el => el.remove());
+
+    // Ensure exactly one slot exists
+    if (!b.querySelector('.brand-logo-slot')) {
+      const slot = Utils.el('div', { class: 'brand-logo-slot', id: 'brandLogoSlot' });
+      const img = Utils.el('img', { src: 'favicon.ico', alt: 'JCompass logo' });
+      img.onerror = () => { img.remove(); slot.appendChild(Utils.el('span', { class: 'brand-logo-placeholder' }, '🧭')); };
+      slot.appendChild(img);
+      b.insertBefore(slot, b.firstChild);
+    }
+    // Ensure exactly one name exists
+    if (!b.querySelector('.brand-name')) {
+      b.appendChild(Utils.el('h1', { class: 'brand-name' }, "Journalist's Compass"));
+    }
+  });
+
+  /* ── Topbar bell ─────────────────────────────────────────────── */
+  if (topRight && !$('topbarBell')) {
+    // ... rest of the buildLayout function stays as-is from my last message
+  }
+  // ...
+}
 
 /* Sidebar brand slot — only add if neither the ID nor the class is present */
 const brand = sidebar.querySelector('.sidebar-brand');
