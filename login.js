@@ -1,6 +1,8 @@
 /**
- * JCompass — Login Controller (v6)
- * Token-based auth. No client-side password comparison.
+ * ══════════════════════════════════════════════════════════════════════
+ *  JCompass — Login Controller (v7)
+ *  Token-based auth + rate limit feedback.
+ * ══════════════════════════════════════════════════════════════════════
  */
 (function () {
   const { CONFIG, Session } = window.JC;
@@ -20,16 +22,42 @@
 
   const supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 
+  let lockoutTimer = null;
+
   const showError = m => { errorBox.textContent = m; errorBox.style.display = 'block'; };
   const hideError = () => { errorBox.style.display = 'none'; };
   const setBusy = b => {
     submitBtn.disabled = b;
-    submitBtn.textContent = b ? 'Authenticating…' : 'Authenticate Session';
+    submitBtn.textContent = b ? 'Authenticating…' : 'Login';
     if (loading) loading.classList.toggle('active', b);
   };
 
+  function startLockoutCountdown(seconds) {
+    let remaining = Math.max(1, Math.floor(seconds));
+    if (lockoutTimer) clearInterval(lockoutTimer);
+    submitBtn.disabled = true;
+    const tick = () => {
+      const m = Math.floor(remaining / 60);
+      const s = String(remaining % 60).padStart(2, '0');
+      const label = m > 0 ? `${m}:${s}` : `${s}s`;
+      showError(`Too many failed attempts. Try again in ${label}.`);
+      submitBtn.textContent = `Locked — ${label}`;
+      if (remaining <= 0) {
+        clearInterval(lockoutTimer);
+        lockoutTimer = null;
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Login';
+        showError('You can try again now.');
+      }
+      remaining--;
+    };
+    tick();
+    lockoutTimer = setInterval(tick, 1000);
+  }
+
   async function handleLogin(e) {
     if (e) e.preventDefault();
+    if (lockoutTimer) return;
     hideError();
 
     const name = userInput.value.trim();
@@ -47,12 +75,33 @@
         setBusy(false);
         return;
       }
-      if (!data || !data.ok || !data.token) {
-        showError('Invalid credentials.');
+
+      /* ── Locked out ───────────────────────────────────────────── */
+      if (data && data.error === 'locked') {
         setBusy(false);
+        startLockoutCountdown(data.retry_after_seconds || 120);
         return;
       }
 
+      /* ── Wrong password ───────────────────────────────────────── */
+      if (!data || !data.ok) {
+        setBusy(false);
+        const left = data && typeof data.attempts_remaining === 'number'
+          ? data.attempts_remaining
+          : null;
+        if (left === 0) {
+          startLockoutCountdown(120);
+        } else if (left === 1) {
+          showError('Invalid credentials. 1 attempt remaining before temporary lockout.');
+        } else if (left === 2) {
+          showError('Invalid credentials. 2 attempts remaining.');
+        } else {
+          showError('Invalid credentials.');
+        }
+        return;
+      }
+
+      /* ── Success ──────────────────────────────────────────────── */
       Session.save(data.token);
       userInput.value = '';
       passInput.value = '';
