@@ -68,7 +68,9 @@
 
     <main class="main-content">
       <header class="topbar">
-        <button class="menu-toggle" id="menuToggle" type="button">☰</button>
+<button class="menu-toggle" id="menuToggle" type="button" aria-label="Open navigation">
+  <img src="favicon.ico" alt="JCompass" onerror="this.replaceWith('☰')">
+</button>
         <div class="topbar-center">
           <span>JCompass</span>
           <span class="breadcrumb-sep">›</span>

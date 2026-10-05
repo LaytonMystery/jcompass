@@ -1,11 +1,9 @@
 /* ══════════════════════════════════════════════════════════════════════
-   JCompass add-on — v6.1
+   JCompass add-on — v6.2
    Load AFTER app.js.
-   • Assign popup (JC.showAssignPopup)
-   • Auto-scroll announcements
-   • Cabinet stats (clickable, hides Team Members for STAFF)
-   • Brightness toggle wiring
-   • Layout: topbar bell + profile pill, hamburger inside workspace tray
+   • Topbar bell toggles notification permission (no more badge)
+   • Mobile hamburger replaced with logo
+   • Bell vertically aligned with profile pill
    ══════════════════════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +11,7 @@
   const { Utils } = window.JC;
   const $ = id => document.getElementById(id);
 
-  /* ── Assign popup (called from app.js) ────────────────────────── */
+  /* ── Assign popup ────────────────────────────────────────────── */
   window.JC.showAssignPopup = function (heading, title, page) {
     const el = Utils.el('div', { class: 'assign-popup' });
     const box = Utils.el('div', { class: 'assign-popup-box' });
@@ -31,7 +29,7 @@
     if (navigator.vibrate) navigator.vibrate(200);
   };
 
-  /* ── Project status colours ───────────────────────────────────── */
+  /* ── Project status colours ──────────────────────────────────── */
   function applyProjectColors() {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     document.querySelectorAll('#projectGrid .profile-btn').forEach(btn => {
@@ -56,7 +54,7 @@
     };
   }
 
-  /* ── Announcements auto-scroll ────────────────────────────────── */
+  /* ── Announcements auto-scroll ───────────────────────────────── */
   let paused = false, waiting = false;
   function tickScroll() {
     const c = $('announcementsStreamContainer');
@@ -69,7 +67,7 @@
     requestAnimationFrame(tickScroll);
   }
 
-  /* ── Cabinet stats — hide Team Members tile for STAFF ─────────── */
+  /* ── Cabinet stats ───────────────────────────────────────────── */
   function buildCabinetStats() {
     const grid = document.querySelector('.stats-grid');
     if (!grid) return;
@@ -89,10 +87,7 @@
       if (!valEl) return;
       const id = valEl.id;
 
-      if (id === 'statStaffCount' && isStaff) {
-        card.style.display = 'none';
-        return;
-      }
+      if (id === 'statStaffCount' && isStaff) { card.style.display = 'none'; return; }
       card.style.display = '';
 
       const target = targetMap[id];
@@ -116,14 +111,12 @@
     });
   }
 
-  /* ── Brightness toggle ────────────────────────────────────────── */
+  /* ── Brightness toggle ───────────────────────────────────────── */
   function initBrightness() {
     const setMode = m => {
       document.body.setAttribute('data-mode', m);
       try { localStorage.setItem('jcompass_mode', m); } catch {}
-      document.querySelectorAll('.mode-chip-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.mode === m);
-      });
+      document.querySelectorAll('.mode-chip-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
     };
     let saved = 'dark';
     try { saved = localStorage.getItem('jcompass_mode') || 'dark'; } catch {}
@@ -135,27 +128,94 @@
     });
   }
 
-  /* ══════════════════════════════════════════════════════════════════
-     LAYOUT: topbar bell, profile pill, hamburger in workspace tray
-     ══════════════════════════════════════════════════════════════════ */
+  /* ══════════════════════════════════════════════════════════════
+     Bell — enable / disable notifications
+     ══════════════════════════════════════════════════════════════ */
+  function updateBellUI() {
+    const bell = $('topbarBell');
+    if (!bell) return;
+
+    const supported = 'Notification' in window;
+    const perm = supported ? Notification.permission : 'unsupported';
+
+    bell.classList.remove('bell-on', 'bell-off', 'bell-blocked');
+    bell.innerHTML = '';
+    bell.appendChild(document.createTextNode((!supported || perm === 'denied') ? '🔕' : '🔔'));
+
+    if (!supported || perm === 'denied') {
+      bell.classList.add('bell-blocked');
+      bell.title = supported
+        ? 'Notifications blocked — enable in browser settings'
+        : 'Notifications not supported';
+    } else if (perm === 'granted') {
+      bell.classList.add('bell-on');
+      bell.title = 'Notifications enabled';
+    } else {
+      bell.classList.add('bell-off');
+      bell.title = 'Click to enable notifications';
+    }
+  }
+
+  async function toggleBellNotifications() {
+    if (!('Notification' in window)) {
+      if (typeof triggerNotificationToast === 'function')
+        triggerNotificationToast('Notifications are not supported in this browser.');
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      if (typeof triggerNotificationToast === 'function')
+        triggerNotificationToast('Notifications already enabled. Disable them in your browser settings.');
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      if (typeof triggerNotificationToast === 'function')
+        triggerNotificationToast('Notifications are blocked. Enable them in your browser settings.');
+      return;
+    }
+    const result = await Notification.requestPermission();
+    updateBellUI();
+    if (result === 'granted') {
+      if (typeof triggerNotificationToast === 'function')
+        triggerNotificationToast('✓ Notifications enabled.');
+      const u = window.JC.Session.user();
+      if (u && typeof setOneSignalUser === 'function') setOneSignalUser(u.name).catch(() => {});
+    } else {
+      if (typeof triggerNotificationToast === 'function')
+        triggerNotificationToast('Notifications were not enabled.');
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     Layout — bell, profile pill, tray hamburger, mobile logo
+     ══════════════════════════════════════════════════════════════ */
   function buildLayout() {
     const sidebar = $('sidebar');
     const topRight = document.querySelector('.topbar-right');
     if (!sidebar) return;
 
-    /* ── Bell in the topbar ────────────────────────────────────── */
+    /* Sidebar brand slot */
+    const brand = sidebar.querySelector('.sidebar-brand');
+    if (brand && !$('brandLogoSlot')) {
+      brand.querySelector('.brand-icon')?.remove();
+      const slot = Utils.el('div', { class: 'brand-logo-slot', id: 'brandLogoSlot' });
+      const img = Utils.el('img', { src: 'favicon.ico', alt: 'JCompass logo' });
+      img.onerror = () => { img.remove(); slot.appendChild(Utils.el('span', { class: 'brand-logo-placeholder' }, '🧭')); };
+      slot.appendChild(img);
+      brand.insertBefore(slot, brand.firstChild);
+    }
+
+    /* Topbar bell */
     if (topRight && !$('topbarBell')) {
       const bell = Utils.el('button', {
         type: 'button', class: 'topbar-bell', id: 'topbarBell',
-        title: 'Notifications', 'aria-label': 'Notifications'
+        title: 'Enable notifications', 'aria-label': 'Notifications'
       });
-      bell.appendChild(document.createTextNode('🔔'));
-      bell.appendChild(Utils.el('b', { class: 'bell-badge', id: 'bellBadge', hidden: true }, '0'));
-      bell.onclick = openBell;
-      topRight.appendChild(bell);
+      bell.onclick = toggleBellNotifications;
+      topRight.insertBefore(bell, topRight.firstChild);
     }
+    updateBellUI();
 
-    /* ── Profile pill (avatar + name, no hamburger) ───────────── */
+    /* Profile pill */
     if (topRight && !$('topbarProfileBtn')) {
       const btn = Utils.el('button', {
         type: 'button', class: 'topbar-menu-btn', id: 'topbarProfileBtn',
@@ -167,7 +227,7 @@
       topRight.appendChild(btn);
     }
 
-    /* ── Hamburger inside the workspace controls tray ─────────── */
+    /* Hamburger inside the workspace tray */
     const trayHeader = document.querySelector('.control-tray .tray-header');
     if (trayHeader && !$('trayHamburger')) {
       const hb = Utils.el('button', {
@@ -185,15 +245,25 @@
       trayHeader.insertBefore(hb, trayHeader.firstChild);
     }
 
-    /* ── Hide old topbar chip, remove old sidebar bell ─────────── */
+    /* Mobile menu-toggle → logo */
+    const menuBtn = $('menuToggle');
+    if (menuBtn && !menuBtn.querySelector('img')) {
+      menuBtn.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = 'favicon.ico';
+      img.alt = 'Open navigation';
+      img.onerror = () => { menuBtn.textContent = '☰'; };
+      menuBtn.appendChild(img);
+    }
+
+    /* Legacy cleanup */
     $('userAvatarBtn')?.classList.add('chip-hidden');
     $('sideBell')?.remove();
 
-    /* ── Mirror name / avatar from hidden elements ────────────── */
+    /* Mirror name + avatar */
     const mirror = () => {
       const g = id => ($(id) || {}).textContent || '';
-      const av = $('topbarAvatar');
-      const nm = $('topbarName');
+      const av = $('topbarAvatar'); const nm = $('topbarName');
       if (av) av.textContent = g('avatarBadgeIcon') || 'JC';
       if (nm) nm.textContent = g('displayName') || 'User';
     };
@@ -207,42 +277,7 @@
     mirror();
   }
 
-  /* ── Bell badge + open logic ──────────────────────────────────── */
-  const SEEN = 'jcompass_bell_seen';
-  const num = a => parseInt(String(a.id).replace('remote-', ''), 10) || 0;
-  const currentUserName = () => window.JC.Session.user()?.name || null;
-  const mine = () => {
-    if (typeof announcements === 'undefined') return [];
-    const name = currentUserName();
-    if (!name) return [];
-    return announcements.filter(a => a.sender !== name && (a.target === 'ALL' || a.target === name));
-  };
-
-  function updateBadge() {
-    const b = $('bellBadge'); if (!b) return;
-    let seen = 0; try { seen = parseInt(localStorage.getItem(SEEN) || '0', 10); } catch {}
-    const n = mine().filter(a => num(a) > seen).length;
-    b.textContent = n > 99 ? '99+' : n;
-    b.hidden = n === 0;
-  }
-
-  function openBell() {
-    try {
-      if (typeof announcements !== 'undefined' && announcements.length) {
-        localStorage.setItem(SEEN, String(Math.max(0, ...announcements.map(num))));
-      }
-    } catch {}
-    updateBadge();
-    document.querySelector('.nav-item[data-page="dashboard"]')?.click();
-    $('sidebar')?.classList.remove('active');
-    setTimeout(() => $('announcementsStreamContainer')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    OneSignalDeferred.push(async OS => {
-      try { if (!OS.Notifications.permission) await OS.Notifications.requestPermission(); } catch {}
-    });
-  }
-
-  /* ── Init ─────────────────────────────────────────────────────── */
+  /* ── Init ────────────────────────────────────────────────────── */
   function init() {
     const nameIn = $('sidebarNameInput'); const save = $('saveNameBtn');
     if (nameIn) { nameIn.readOnly = true; nameIn.disabled = true; }
@@ -261,27 +296,32 @@
     initBrightness();
     buildCabinetStats();
     buildLayout();
-    updateBadge();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
-  /* ── Wrap functions to keep cabinet + bell fresh ──────────────── */
+  /* Wrap to keep cabinet + bell fresh */
   const origStats = window.generateDashboardStats;
   if (origStats) {
     window.generateDashboardStats = function () { origStats.apply(this, arguments); buildCabinetStats(); };
   }
-  ['generateAnnouncementsStream', 'rebuildApplicationDOMViews'].forEach(fn => {
-    const orig = window[fn];
-    if (typeof orig !== 'function') return;
-    window[fn] = function () { orig.apply(this, arguments); buildLayout(); updateBadge(); };
-  });
+  const origRebuild = window.rebuildApplicationDOMViews;
+  if (origRebuild) {
+    window.rebuildApplicationDOMViews = function () {
+      origRebuild.apply(this, arguments);
+      buildLayout();
+    };
+  }
 
-  /* ── Re-wire brightness chips when the tray opens ─────────────── */
   document.addEventListener('click', e => {
     if (e.target.closest('.settings-sidebar-btn, #settingsGearBtn, #userAvatarBtn, #topbarProfileBtn')) {
       setTimeout(initBrightness, 50);
     }
   }, true);
+
+  // Re-check permission when the tab regains focus
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') updateBellUI();
+  });
 })();
