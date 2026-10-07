@@ -1,8 +1,8 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v6.2                                          ║
+ * ║  JOURNALIST'S COMPASS v6.3                                          ║
  * ║  · Editor in Chief role (admin minus user management)               ║
- * ║  · HMAC-signed sessions · escaped HTML · Supabase Storage           ║
+ * ║  · EIC included in task/field-op/announcement selectors             ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
@@ -61,6 +61,8 @@ let realtimeChannel = null;
 const PRIVILEGED_ROLES = ['ADMIN', 'EDITOR'];
 const isPrivileged = () => !!currentUser && PRIVILEGED_ROLES.includes(currentUser.role);
 const isAdmin = () => !!currentUser && currentUser.role === 'ADMIN';
+// Anyone who can be assigned work:
+const isAssignable = (role) => role === 'STAFF' || role === 'EDITOR';
 
 let currentFilter = 'ALL';
 let searchQuery = '';
@@ -464,11 +466,12 @@ function evaluateClearancePermissions() {
   const staffCard = document.getElementById('statStaffCountParent');
   if (staffCard) staffCard.style.display = showAdminNav ? '' : 'none';
 
+  // Ping dropdown — include STAFF and EDITOR
   const pingSelect = document.getElementById('announcePingTarget');
   if (pingSelect) {
     pingSelect.innerHTML = '<option value="ALL">Send to All</option>';
     registeredUsersDB.forEach(u => {
-      if (u.role === 'STAFF') {
+      if (isAssignable(u.role)) {
         const opt = document.createElement('option');
         opt.value = u.name;
         opt.textContent = 'Message: ' + u.name;
@@ -1076,7 +1079,7 @@ function generateDeploymentsGrid() {
 function populateReporterCheckboxes() {
   const container = document.getElementById('reporterCheckboxList');
   if (!container) return;
-  const staffUsers = registeredUsersDB.filter(u => u.role === 'STAFF');
+  const staffUsers = registeredUsersDB.filter(u => isAssignable(u.role));
   if (staffUsers.length === 0) {
     container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">No staff members available.</div>';
     return;
@@ -1225,7 +1228,7 @@ function generateAssignmentsGrid() {
 function populateAssigneeRadios() {
   const container = document.getElementById('assigneeRadioList');
   if (!container) return;
-  const staffUsers = registeredUsersDB.filter(u => u.role === 'STAFF');
+  const staffUsers = registeredUsersDB.filter(u => isAssignable(u.role));
   if (staffUsers.length === 0) {
     container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">No staff members available. Create staff accounts first.</div>';
     return;
@@ -2728,7 +2731,7 @@ function initializeApp() {
 
   document.getElementById('generateActivitySummaryBtn')?.addEventListener('click', generateActivitySummaryReport);
 
-  console.log('✅ JCompass initialized (v6.2)');
+  console.log('✅ JCompass initialized (v6.3)');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

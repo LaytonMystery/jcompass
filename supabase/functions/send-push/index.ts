@@ -6,6 +6,10 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+// 👇 Edit if the Vercel URL ever changes
+const SITE_URL = "https://jcompass-ruddy.vercel.app";
+const ICON_URL = `${SITE_URL}/favicon.ico`;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -24,8 +28,13 @@ serve(async (req) => {
       app_id: APP_ID,
       contents: { en: message },
       headings: { en: title },
+      url: SITE_URL,
+      web_url: SITE_URL,
+      chrome_web_icon: ICON_URL,
+      firefox_icon: ICON_URL,
       priority: 10,
-      data: { type: "ping" },
+      ttl: 259200,
+      data: { type: "ping", url: SITE_URL },
     };
     if (targetUserName) body.include_external_user_ids = [targetUserName];
     else body.included_segments = ["Subscribed Users"];
