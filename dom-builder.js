@@ -400,7 +400,7 @@
           <label class="form-label">Instructions</label>
           <textarea class="form-input" id="beatDescription" rows="3" placeholder="What should the team do?" style="resize:vertical; font-family:var(--font-body);"></textarea>
           <label class="form-label">Select Team Member(s) <span style="color:var(--text-muted);font-weight:400;">(multi-select)</span></label>
-          <div id="reporterCheckboxList" style="max-height:220px; overflow-y:auto; background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:8px; padding:0.75rem;"></div>
+         <div id="reporterCheckboxList" class="assignee-picker"></div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" data-close="addBeatModal" type="button">Cancel</button>
@@ -416,8 +416,8 @@
           <label class="form-label">Task Description</label>
           <input class="form-input" id="asgTitle" type="text" placeholder="What needs to be done?">
           <label class="form-label">Assign To <span style="color:var(--text-muted);font-weight:400;">(select one)</span></label>
-          <div id="assigneeRadioList" style="max-height:220px; overflow-y:auto; background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:8px; padding:0.75rem;"></div>
-        </div>
+         <div id="assigneeRadioList" class="assignee-picker"></div>
+         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" data-close="addAssignmentModal" type="button">Cancel</button>
           <button class="btn btn-primary" id="saveAssignmentBtn" type="button">Create &amp; Notify</button>
