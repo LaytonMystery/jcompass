@@ -621,3 +621,75 @@ body[data-theme-profile="violet"] .assignee-chip {
   border-color: rgba(139, 92, 246, 0.4);
   color: #ddd6fe;
 }
+/* ══════════════════════════════════════════════════════════════════════
+   DEADLINE CALENDAR — mobile dots + today highlight + category tints
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Base dot element — hidden by default (desktop shows full entries) */
+.cal-dots {
+  display: none;
+  gap: 3px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+
+.cal-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.cal-dot.dot-project { background: #4c6e49; }
+.cal-dot.dot-task    { background: #8b5cf6; }
+.cal-dot.dot-event   { background: #fbd38d; }
+
+/* Today ring — visible on both desktop and mobile */
+.cal-cell.cal-today {
+  outline: 2px solid var(--accent-light);
+  outline-offset: -2px;
+}
+.cal-cell.cal-today .cal-num {
+  color: var(--accent-light);
+  font-weight: 900;
+}
+
+/* Subtle tint so busy days stand out even before dots */
+.cal-cell.has-items {
+  background-color: rgba(76, 110, 73, 0.08);
+}
+
+/* Light mode overrides for dots and today ring */
+body[data-mode="light"] .cal-dot.dot-project { background: #2d7a5c; }
+body[data-mode="light"] .cal-dot.dot-task    { background: #7c3aed; }
+body[data-mode="light"] .cal-dot.dot-event   { background: #d97706; }
+body[data-mode="light"] .cal-cell.has-items { background-color: rgba(45, 122, 92, 0.06); }
+
+/* Violet theme dot tweak */
+body[data-theme-profile="violet"] .cal-dot.dot-project { background: #8b5cf6; }
+body[data-theme-profile="violet"] .cal-dot.dot-task    { background: #a78bfa; }
+body[data-theme-profile="violet"] .cal-dot.dot-event   { background: #fbbf24; }
+
+/* ── Mobile: hide text entries, show dots instead ─────────────────── */
+@media (max-width: 640px) {
+  .cal-dots { display: flex; margin-top: 4px; gap: 4px; }
+  .cal-dot { width: 7px; height: 7px; }
+
+  /* Enlarge tap targets + center the day number */
+  .cal-cell {
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 56px;
+  }
+  .cal-num {
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+}
+
+/* ── Very small phones: 2-row layout only, tighter cells ─────────── */
+@media (max-width: 380px) {
+  .cal-dot { width: 6px; height: 6px; }
+  .cal-cell { min-height: 48px; }
+}

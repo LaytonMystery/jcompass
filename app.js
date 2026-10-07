@@ -1482,32 +1482,76 @@ function generateDeadlineCalendarGrid() {
   const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
   const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
 
+  // Today marker (for the highlighted "today" cell)
+  const todayIso = Utils.todayLocalISO();
+
   for (let i = 0; i < firstDay; i++) {
     const empty = document.createElement('div');
-    empty.className = 'cal-cell';
+    empty.className = 'cal-cell cal-cell-empty';
     empty.style.opacity = '0.3';
     container.appendChild(empty);
   }
+
   for (let day = 1; day <= daysInMonth; day++) {
     const cell = document.createElement('div');
     cell.className = 'cal-cell';
-    cell.innerHTML = '<div class="cal-num">' + day + '</div>';
+
     const dateStr = calendarYear + '-' + String(calendarMonth + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
     const dayProjects = projects.filter(p => p.deadline === dateStr && !p.archived);
-    const dayTasks = assignments.filter(a => a.due_date === dateStr && !a.archived);
+    const dayTasks    = assignments.filter(a => a.due_date === dateStr && !a.archived);
+    const dayEvents   = events.filter(e => e.date === dateStr && !e.archived);
+
+    const hasP = dayProjects.length > 0;
+    const hasT = dayTasks.length > 0;
+    const hasE = dayEvents.length > 0;
+    const hasAny = hasP || hasT || hasE;
+
+    if (dateStr === todayIso) cell.classList.add('cal-today');
+    if (hasAny) {
+      cell.classList.add('has-items');
+      if (hasP) cell.classList.add('has-projects');
+      if (hasT) cell.classList.add('has-tasks');
+      if (hasE) cell.classList.add('has-events');
+    }
+
+    // Day number
+    const numEl = document.createElement('div');
+    numEl.className = 'cal-num';
+    numEl.textContent = day;
+    cell.appendChild(numEl);
+
+    // Dot indicators (shown on mobile via CSS)
+    if (hasAny) {
+      const dots = document.createElement('div');
+      dots.className = 'cal-dots';
+      if (hasP) dots.appendChild(Utils.el('span', { class: 'cal-dot dot-project', title: dayProjects.length + ' project(s)' }));
+      if (hasT) dots.appendChild(Utils.el('span', { class: 'cal-dot dot-task', title: dayTasks.length + ' task(s)' }));
+      if (hasE) dots.appendChild(Utils.el('span', { class: 'cal-dot dot-event', title: dayEvents.length + ' event(s)' }));
+      cell.appendChild(dots);
+    }
+
+    // Desktop entries (hidden on mobile via style.css)
     dayProjects.forEach(p => {
       const entry = document.createElement('div');
-      entry.className = 'cal-entry';
+      entry.className = 'cal-entry cal-entry-project';
       entry.innerText = '📋 ' + p.title;
       cell.appendChild(entry);
     });
     dayTasks.forEach(t => {
       const entry = document.createElement('div');
-      entry.className = 'cal-entry';
+      entry.className = 'cal-entry cal-entry-task';
       entry.style.background = 'rgba(139, 92, 246, 0.4)';
       entry.innerText = '🔔 ' + t.title;
       cell.appendChild(entry);
     });
+    dayEvents.forEach(e => {
+      const entry = document.createElement('div');
+      entry.className = 'cal-entry cal-entry-event';
+      entry.style.background = 'rgba(251, 211, 141, 0.3)';
+      entry.innerText = '📌 ' + e.name;
+      cell.appendChild(entry);
+    });
+
     cell.addEventListener('click', () => openCalendarDayModal(dateStr));
     container.appendChild(cell);
   }
