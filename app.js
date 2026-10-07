@@ -61,8 +61,9 @@ let realtimeChannel = null;
 const PRIVILEGED_ROLES = ['ADMIN', 'EDITOR'];
 const isPrivileged = () => !!currentUser && PRIVILEGED_ROLES.includes(currentUser.role);
 const isAdmin = () => !!currentUser && currentUser.role === 'ADMIN';
-// Anyone who can be assigned work:
-const isAssignable = (role) => role === 'STAFF' || role === 'EDITOR';
+// Anyone who can be assigned work — every non-admin role.
+// Future roles (MANAGER, INTERN, etc.) automatically qualify.
+const isAssignable = (role) => role !== 'ADMIN';
 
 let currentFilter = 'ALL';
 let searchQuery = '';
@@ -2590,6 +2591,14 @@ function initializeApp() {
   });
 
   document.getElementById('profileSaveBtn')?.addEventListener('click', saveProjectProfile);
+    /* Progress slider — live sync with the fill bar + % label */
+  document.getElementById('profileProgressInput')?.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value, 10) || 0;
+    const bar = document.getElementById('profileProgressBar');
+    const label = document.getElementById('profileProgressLabel');
+    if (bar) bar.style.width = v + '%';
+    if (label) label.innerText = v + '%';
+  });
 
   const projectModal = document.getElementById('projectProfileModal');
   if (projectModal) {
