@@ -566,3 +566,58 @@ body[data-mode="light"] .assignee-picker > label:hover {
     max-height: 320px;
   }
 }
+/* ══════════════════════════════════════════════════════════════════════
+   MULTI-ASSIGNEE — chips, group tag, card layout
+   ══════════════════════════════════════════════════════════════════════ */
+
+.card-assignee-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.15rem 0;
+}
+
+.assignee-chip {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  background: rgba(76, 110, 73, 0.22);
+  border: 1px solid rgba(76, 110, 73, 0.4);
+  color: #a3e6a1;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+
+body[data-mode="light"] .assignee-chip {
+  background: rgba(45, 122, 92, 0.12);
+  border-color: rgba(45, 122, 92, 0.32);
+  color: #14532d;
+}
+
+.group-tag {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  background: rgba(139, 92, 246, 0.18);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  color: #ddd6fe;
+  border-radius: 10px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+body[data-mode="light"] .group-tag {
+  background: rgba(139, 92, 246, 0.12);
+  border-color: rgba(139, 92, 246, 0.3);
+  color: #5b21b6;
+}
+
+body[data-theme-profile="violet"] .assignee-chip {
+  background: rgba(139, 92, 246, 0.18);
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #ddd6fe;
+}

@@ -1,7 +1,7 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Dashboard DOM Builder v6.5
- *  · Editor in Chief role option in Create Account modal
+ *  JCompass — Dashboard DOM Builder v6.6
+ *  · Multi-assignee support for tasks
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
@@ -384,7 +384,7 @@
     </div>
 
     <div class="modal-overlay" id="addBeatModal">
-      <div class="modal" style="max-width:600px; width:95vw;">
+      <div class="modal" style="max-width:720px; width:95vw;">
         <div class="modal-header"><h2 class="modal-title">New Field Operation</h2><button class="modal-close" data-close="addBeatModal" type="button">✕</button></div>
         <div class="modal-body">
           <label class="form-label">Operation Title</label>
@@ -400,7 +400,7 @@
           <label class="form-label">Instructions</label>
           <textarea class="form-input" id="beatDescription" rows="3" placeholder="What should the team do?" style="resize:vertical; font-family:var(--font-body);"></textarea>
           <label class="form-label">Select Team Member(s) <span style="color:var(--text-muted);font-weight:400;">(multi-select)</span></label>
-         <div id="reporterCheckboxList" class="assignee-picker"></div>
+          <div id="reporterCheckboxList" class="assignee-picker"></div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" data-close="addBeatModal" type="button">Cancel</button>
@@ -410,14 +410,14 @@
     </div>
 
     <div class="modal-overlay" id="addAssignmentModal">
-      <div class="modal" style="max-width:600px; width:95vw;">
+      <div class="modal" style="max-width:720px; width:95vw;">
         <div class="modal-header"><h2 class="modal-title">Create Task</h2><button class="modal-close" data-close="addAssignmentModal" type="button">✕</button></div>
         <div class="modal-body">
           <label class="form-label">Task Description</label>
           <input class="form-input" id="asgTitle" type="text" placeholder="What needs to be done?">
-          <label class="form-label">Assign To <span style="color:var(--text-muted);font-weight:400;">(select one)</span></label>
-         <div id="assigneeRadioList" class="assignee-picker"></div>
-         </div>
+          <label class="form-label">Assign To <span style="color:var(--text-muted);font-weight:400;">(select one or more)</span></label>
+          <div id="assigneeRadioList" class="assignee-picker"></div>
+        </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" data-close="addAssignmentModal" type="button">Cancel</button>
           <button class="btn btn-primary" id="saveAssignmentBtn" type="button">Create &amp; Notify</button>

@@ -1,8 +1,7 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v6.3                                          ║
- * ║  · Editor in Chief role (admin minus user management)               ║
- * ║  · EIC included in task/field-op/announcement selectors             ║
+ * ║  JOURNALIST'S COMPASS v6.4                                          ║
+ * ║  · Multi-assignee tasks (comma-separated, chip display)             ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
@@ -61,9 +60,23 @@ let realtimeChannel = null;
 const PRIVILEGED_ROLES = ['ADMIN', 'EDITOR'];
 const isPrivileged = () => !!currentUser && PRIVILEGED_ROLES.includes(currentUser.role);
 const isAdmin = () => !!currentUser && currentUser.role === 'ADMIN';
-// Anyone who can be assigned work — every non-admin role.
-// Future roles (MANAGER, INTERN, etc.) automatically qualify.
 const isAssignable = (role) => role !== 'ADMIN';
+
+// ─── Multi-assignee helpers ─────────────────────────────────────────────
+// Assignees are stored as "Name1, Name2, Name3"
+function parseAssignees(str) {
+  return (str || '').split(',').map(s => s.trim()).filter(Boolean);
+}
+function isUserAssigned(assigneeField, userName) {
+  if (!userName) return false;
+  const list = parseAssignees(assigneeField).map(n => n.toLowerCase());
+  return list.includes(userName.toLowerCase());
+}
+function renderAssigneeChips(assigneeField) {
+  const list = parseAssignees(assigneeField);
+  if (list.length === 0) return '<span style="color:var(--text-muted);">—</span>';
+  return list.map(n => '<span class="assignee-chip">' + esc(n) + '</span>').join('');
+}
 
 let currentFilter = 'ALL';
 let searchQuery = '';
@@ -308,7 +321,7 @@ function subscribeRealtime() {
       generateAnnouncementsStream();
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'assignments' }, ({ new: row }) => {
-      if (row.assignee === currentUser.name && row.created_by !== currentUser.name && window.JC.showAssignPopup) {
+      if (isUserAssigned(row.assignee, currentUser.name) && row.created_by !== currentUser.name && window.JC.showAssignPopup) {
         window.JC.showAssignPopup('New task assigned', row.title, 'assignments');
       }
     })
@@ -459,7 +472,6 @@ function evaluateClearancePermissions() {
     el.style.display = showAdminNav ? '' : 'none';
   });
 
-  // Hide admin-only action buttons from editors
   document.querySelectorAll('[data-admin-only]').forEach(el => {
     el.style.display = isAdmin() ? '' : 'none';
   });
@@ -467,7 +479,6 @@ function evaluateClearancePermissions() {
   const staffCard = document.getElementById('statStaffCountParent');
   if (staffCard) staffCard.style.display = showAdminNav ? '' : 'none';
 
-  // Ping dropdown — include STAFF and EDITOR
   const pingSelect = document.getElementById('announcePingTarget');
   if (pingSelect) {
     pingSelect.innerHTML = '<option value="ALL">Send to All</option>';
@@ -1167,7 +1178,7 @@ async function archiveDeployment(deploymentId) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   SECTION 15: ASSIGNMENTS
+   SECTION 15: ASSIGNMENTS (multi-assignee)
    ═══════════════════════════════════════════════════════════════════════ */
 
 function generateAssignmentsGrid() {
@@ -1191,8 +1202,15 @@ function generateAssignmentsGrid() {
     if (a.status === 'SUBMITTED') statusBadge = '<span class="status-badge status-review">📤 SUBMITTED</span>';
     if (a.status === 'REVIEWED')  statusBadge = '<span class="status-badge status-published">✓ REVIEWED</span>';
 
-    const isAssignee = currentUser && currentUser.name.toLowerCase() === (a.assignee || '').toLowerCase();
+    const assignees = parseAssignees(a.assignee);
+    const isAssignee = isUserAssigned(a.assignee, currentUser.name);
     const canView = isAssignee || canManage;
+    const isGroup = assignees.length > 1;
+
+    // Status badge with optional group tag
+    const groupTag = isGroup
+      ? '<span class="group-tag" title="Group task">👥 Group · ' + assignees.length + '</span> '
+      : '';
 
     let actionBtn = '';
     if (canView) {
@@ -1206,12 +1224,15 @@ function generateAssignmentsGrid() {
     }
 
     card.innerHTML =
-      '<div style="display:flex;justify-content:space-between;align-items:start;gap:0.5rem;">' +
-        '<div class="card-title" style="font-size:1.05rem;flex:1;">' + esc(a.title) + '</div>' +
-        statusBadge +
+      '<div style="display:flex;justify-content:space-between;align-items:start;gap:0.5rem;flex-wrap:wrap;">' +
+        '<div class="card-title" style="font-size:1.05rem;flex:1;min-width:0;">' + esc(a.title) + '</div>' +
+        '<div style="display:flex;gap:0.35rem;align-items:center;flex-shrink:0;">' + groupTag + statusBadge + '</div>' +
       '</div>' +
       (a.description ? '<div style="font-size:0.82rem;color:var(--text-muted); white-space:pre-line; line-height:1.5;">' + esc(a.description) + '</div>' : '') +
-      '<div style="font-size:0.85rem;color:var(--text-muted);">👤 Assigned to: <b>' + esc(a.assignee || '—') + '</b></div>' +
+      '<div class="card-assignee-row">' +
+        '<span style="font-size:0.82rem;color:var(--text-muted);">👤 Assigned to:</span> ' +
+        renderAssigneeChips(a.assignee) +
+      '</div>' +
       (a.due_date ? '<div style="font-size:0.8rem;color:var(--text-muted);">📅 Due: ' + esc(a.due_date) + '</div>' : '') +
       (a.submitted_by ? '<div style="font-size:0.78rem; color:#9ae6b4;">📎 Submitted by ' + esc(a.submitted_by) + ' on ' + esc(Utils.fmtDate(a.submitted_at)) + '</div>' : '') +
       (actionBtn ? '<div class="card-action-row">' + actionBtn + '</div>' : '') +
@@ -1226,7 +1247,7 @@ function generateAssignmentsGrid() {
     btn.addEventListener('click', () => archiveAssignment(parseInt(btn.dataset.asgArchive, 10))));
 }
 
-function populateAssigneeRadios() {
+function populateAssigneeCheckboxes() {
   const container = document.getElementById('assigneeRadioList');
   if (!container) return;
   const staffUsers = registeredUsersDB.filter(u => isAssignable(u.role));
@@ -1234,9 +1255,9 @@ function populateAssigneeRadios() {
     container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">No staff members available. Create staff accounts first.</div>';
     return;
   }
-  container.innerHTML = staffUsers.map((u, idx) =>
+  container.innerHTML = staffUsers.map(u =>
     '<label style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem; border-radius:6px; cursor:pointer;">' +
-      '<input type="radio" name="assignee" value="' + esc(u.name) + '" ' + (idx === 0 ? 'checked' : '') + ' style="width:18px; height:18px; accent-color:var(--accent-light); cursor:pointer;">' +
+      '<input type="checkbox" value="' + esc(u.name) + '" style="width:18px; height:18px; accent-color:var(--accent-light); cursor:pointer;">' +
       '<div style="display:flex; align-items:center; gap:0.5rem; flex:1;">' +
         '<div class="staff-avatar-mini">' + esc(u.code || '??') + '</div>' +
         '<span style="font-weight:600; font-size:0.9rem;">' + esc(u.name) + '</span>' +
@@ -1246,8 +1267,11 @@ function populateAssigneeRadios() {
   ).join('');
 }
 
+// Kept as an alias so existing calls don't break
+const populateAssigneeRadios = populateAssigneeCheckboxes;
+
 function openAssignmentModal() {
-  populateAssigneeRadios();
+  populateAssigneeCheckboxes();
   document.getElementById('addAssignmentModal').classList.add('active');
 }
 
@@ -1256,13 +1280,16 @@ function openSubmissionModal(assignmentId) {
   if (!a) return;
   activeSubmissionId = assignmentId;
 
-  const isAssignee = currentUser.name.toLowerCase() === (a.assignee || '').toLowerCase();
+  const isAssignee = isUserAssigned(a.assignee, currentUser.name);
   const canManage = isPrivileged();
   const canSubmit = isAssignee && a.status === 'PENDING';
   const canReview = canManage && a.status === 'SUBMITTED';
   const isReadOnlyForAdmin = canManage && !isAssignee;
+  const assignees = parseAssignees(a.assignee);
+  const isGroup = assignees.length > 1;
 
-  document.getElementById('submissionModalCategory').innerText = 'TASK · ' + (a.priority || 'MEDIUM');
+  document.getElementById('submissionModalCategory').innerText =
+    'TASK · ' + (a.priority || 'MEDIUM') + (isGroup ? ' · GROUP (' + assignees.length + ')' : '');
   document.getElementById('submissionModalTitle').innerText = a.title;
 
   const body = document.getElementById('submissionModalBody');
@@ -1271,6 +1298,11 @@ function openSubmissionModal(assignmentId) {
   if (canSubmit) {
     body.innerHTML =
       (a.description ? '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Description</span><div style="margin-top:0.25rem;font-size:0.9rem;white-space:pre-line;line-height:1.5;">' + esc(a.description) + '</div></div>' : '') +
+      (isGroup
+        ? '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Team Members Assigned</span><div style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.35rem;">' +
+          assignees.map(n => '<span class="assignee-chip">' + esc(n) + '</span>').join('') + '</div>' +
+          '<div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.5rem;">Any one of you can submit. The task will close for everyone once submitted.</div></div>'
+        : '') +
       '<div><label class="form-label">Your Work / Report</label><textarea class="form-input" id="submissionText" rows="6" placeholder="Describe your progress, findings, or next steps..." style="font-family:var(--font-body); resize:vertical;"></textarea></div>' +
       '<div><label class="form-label">Attach File (optional)</label><input type="file" id="submissionFile" class="form-input" style="padding:0.5rem;" accept=".pdf,.doc,.docx,.txt,.jpg,.png,.zip"></div>' +
       '<div style="font-size:0.75rem;color:var(--text-muted);">Submitting as <b>' + esc(currentUser.name) + '</b></div>';
@@ -1281,12 +1313,13 @@ function openSubmissionModal(assignmentId) {
   } else {
     const readOnlyBanner = isReadOnlyForAdmin && a.status === 'PENDING'
       ? '<div style="background:rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.4); border-radius:8px; padding:0.85rem 1rem; font-size:0.85rem; color:#ddd6fe; display:flex; gap:0.6rem; align-items:center;">' +
-        '<span style="font-size:1.2rem;">🔒</span><span>Only <b>' + esc(a.assignee || 'the assignee') + '</b> can submit output for this task. You are viewing in read-only mode.</span></div>'
+        '<span style="font-size:1.2rem;">🔒</span><span>Only the assigned member(s) can submit output for this task. You are viewing in read-only mode.</span></div>'
       : '';
 
     body.innerHTML =
       readOnlyBanner +
-      '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Assigned To</span><div style="margin-top:0.25rem;font-size:0.95rem;">' + esc(a.assignee || '—') + '</div></div>' +
+      '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Assigned To' + (isGroup ? ' (' + assignees.length + ')' : '') + '</span>' +
+        '<div style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.35rem;">' + renderAssigneeChips(a.assignee) + '</div></div>' +
       '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Submitted By</span><div style="margin-top:0.25rem;font-size:0.95rem;">' + esc(a.submitted_by || '—') + '</div></div>' +
       '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Submitted At</span><div style="margin-top:0.25rem;font-size:0.9rem;">' + esc(Utils.fmtDateTime(a.submitted_at)) + '</div></div>' +
       (a.submission_text ? '<div><span style="font-size:0.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">Work Submitted</span><div style="margin-top:0.4rem;font-size:0.9rem;white-space:pre-line;line-height:1.6;background:rgba(0,0,0,0.2);padding:0.75rem;border-radius:6px;">' + esc(a.submission_text) + '</div></div>' : '') +
@@ -1322,8 +1355,8 @@ function openSubmissionModal(assignmentId) {
 async function submitAssignment() {
   const a = assignments.find(x => x.id === activeSubmissionId);
   if (!a) return;
-  if (currentUser.name.toLowerCase() !== (a.assignee || '').toLowerCase()) {
-    triggerNotificationToast('Only the assigned member can submit this task.'); return;
+  if (!isUserAssigned(a.assignee, currentUser.name)) {
+    triggerNotificationToast('Only the assigned member(s) can submit this task.'); return;
   }
   const text = document.getElementById('submissionText').value.trim();
   const fileInput = document.getElementById('submissionFile');
@@ -1351,8 +1384,16 @@ async function submitAssignment() {
     } catch (err) { triggerNotificationToast('Backend error: ' + err.message); return; }
   }
   Object.assign(a, updates);
+
+  // Notify all assignees + the creator
+  const notifyList = new Set(parseAssignees(a.assignee));
+  if (a.created_by) notifyList.add(a.created_by);
+  for (const person of notifyList) {
+    if (person.toLowerCase() === currentUser.name.toLowerCase()) continue;
+    await dispatchPing(currentUser.name, person, '📤 ' + currentUser.name + ' submitted: "' + a.title + '"');
+  }
+
   await logAudit('submit_task', 'assignment', a.id, a.title, 'Submitted by ' + currentUser.name);
-  await dispatchPing(currentUser.name, a.created_by || 'ALL', '📤 ' + currentUser.name + ' submitted: "' + a.title + '"');
   flushCachedCollections();
   document.getElementById('assignmentSubmissionModal').classList.remove('active');
   generateAssignmentsGrid();
@@ -1376,9 +1417,15 @@ async function reviewSubmission(approved) {
   }
   Object.assign(a, updates);
   await logAudit(approved ? 'approve_submission' : 'reject_submission', 'assignment', a.id, a.title, approved ? 'Approved' : 'Returned');
-  await dispatchPing(currentUser.name, a.submitted_by, approved
-    ? '✅ Your submission "' + a.title + '" was approved.'
-    : '↩ Your submission "' + a.title + '" needs revision.');
+
+  // Notify all assignees
+  for (const person of parseAssignees(a.assignee)) {
+    if (person.toLowerCase() === currentUser.name.toLowerCase()) continue;
+    await dispatchPing(currentUser.name, person, approved
+      ? '✅ Task "' + a.title + '" was approved.'
+      : '↩ Task "' + a.title + '" needs revision.');
+  }
+
   flushCachedCollections();
   document.getElementById('assignmentSubmissionModal').classList.remove('active');
   generateAssignmentsGrid();
@@ -2055,7 +2102,7 @@ function generateSourcesGrid() {
 
   filtered.forEach(member => {
     const memberProjects = projects.filter(p => !p.archived && (p.reporter || '').split(',').map(s => s.trim()).includes(member.name));
-    const memberTasks = assignments.filter(a => !a.archived && (a.assignee || '').trim() === member.name.trim());
+    const memberTasks = assignments.filter(a => !a.archived && isUserAssigned(a.assignee, member.name));
     const memberDeployments = deployments.filter(d => !d.archived && (d.reporter || '').split(',').map(s => s.trim()).includes(member.name));
 
     const card = document.createElement('div');
@@ -2318,8 +2365,7 @@ function generateNotificationBar() {
   }
 
   const myAssignments = assignments.filter(a =>
-    !a.archived && a.status === 'PENDING' &&
-    currentUser.name.toLowerCase() === (a.assignee || '').toLowerCase()
+    !a.archived && a.status === 'PENDING' && isUserAssigned(a.assignee, currentUser.name)
   ).length;
   if (myAssignments > 0) notices.push({ id: dayKey + ':my-assignments-' + myAssignments, type: 'info', icon: '🔔', text: myAssignments + ' task(s) assigned to you.' });
 
@@ -2591,7 +2637,8 @@ function initializeApp() {
   });
 
   document.getElementById('profileSaveBtn')?.addEventListener('click', saveProjectProfile);
-    /* Progress slider — live sync with the fill bar + % label */
+
+  /* Progress slider — live sync with the fill bar + % label */
   document.getElementById('profileProgressInput')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10) || 0;
     const bar = document.getElementById('profileProgressBar');
@@ -2684,13 +2731,13 @@ function initializeApp() {
 
   document.getElementById('saveAssignmentBtn')?.addEventListener('click', async () => {
     const title = document.getElementById('asgTitle').value.trim();
-    const selectedRadio = document.querySelector('#assigneeRadioList input[name="assignee"]:checked');
-    const assignee = selectedRadio ? selectedRadio.value : null;
+    const selectedBoxes = Array.from(document.querySelectorAll('#assigneeRadioList input[type="checkbox"]:checked')).map(cb => cb.value);
     if (!title) { triggerNotificationToast('Task description is required.'); return; }
-    if (!assignee) { triggerNotificationToast('Please select an assignee.'); return; }
+    if (selectedBoxes.length === 0) { triggerNotificationToast('Please select at least one assignee.'); return; }
 
+    const assigneeString = selectedBoxes.join(', ');
     const payload = {
-      title, assignee, description: '', priority: 'MEDIUM', due_date: null,
+      title, assignee: assigneeString, description: '', priority: 'MEDIUM', due_date: null,
       created_by: currentUser.name, status: 'PENDING', archived: false
     };
     if (supabaseClient) {
@@ -2707,13 +2754,16 @@ function initializeApp() {
       reviewed_by: '', reviewed_at: null, review_notes: '',
       created_at: new Date().toISOString()
     });
-    await logAudit('create_assignment', 'assignment', payload.id, title, 'Assigned to ' + assignee);
-    await dispatchPing(currentUser.name, assignee, '🔔 New task assigned to you: "' + title + '"');
+    await logAudit('create_assignment', 'assignment', payload.id, title,
+      'Assigned to ' + selectedBoxes.length + ' member(s): ' + assigneeString);
+    for (const person of selectedBoxes) {
+      await dispatchPing(currentUser.name, person, '🔔 New task assigned to you: "' + title + '"');
+    }
     flushCachedCollections();
     generateAssignmentsGrid();
     document.getElementById('addAssignmentModal').classList.remove('active');
     document.getElementById('asgTitle').value = '';
-    triggerNotificationToast('✓ Task created for ' + assignee + '.');
+    triggerNotificationToast('✓ Task created for ' + selectedBoxes.length + ' member(s).');
   });
 
   document.getElementById('saveEventBtn')?.addEventListener('click', async () => {
@@ -2740,7 +2790,7 @@ function initializeApp() {
 
   document.getElementById('generateActivitySummaryBtn')?.addEventListener('click', generateActivitySummaryReport);
 
-  console.log('✅ JCompass initialized (v6.3)');
+  console.log('✅ JCompass initialized (v6.4)');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
