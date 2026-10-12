@@ -1,7 +1,9 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Dashboard DOM Builder v6.6
- *  · Multi-assignee support for tasks
+ *  JCompass — Dashboard DOM Builder v6.7
+ *  · Multi-assignee tasks
+ *  · Search bars in both pickers
+ *  · Clean picker containers (styled via .assignee-picker)
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
@@ -384,7 +386,7 @@
     </div>
 
     <div class="modal-overlay" id="addBeatModal">
-      <div class="modal" style="max-width:720px; width:95vw;">
+      <div class="modal" style="max-width:780px; width:95vw;">
         <div class="modal-header"><h2 class="modal-title">New Field Operation</h2><button class="modal-close" data-close="addBeatModal" type="button">✕</button></div>
         <div class="modal-body">
           <label class="form-label">Operation Title</label>
@@ -400,6 +402,7 @@
           <label class="form-label">Instructions</label>
           <textarea class="form-input" id="beatDescription" rows="3" placeholder="What should the team do?" style="resize:vertical; font-family:var(--font-body);"></textarea>
           <label class="form-label">Select Team Member(s) <span style="color:var(--text-muted);font-weight:400;">(multi-select)</span></label>
+          <input type="text" id="reporterSearchInput" class="assignee-search" placeholder="🔍 Search members..." autocomplete="off">
           <div id="reporterCheckboxList" class="assignee-picker"></div>
         </div>
         <div class="modal-footer">
@@ -410,12 +413,13 @@
     </div>
 
     <div class="modal-overlay" id="addAssignmentModal">
-      <div class="modal" style="max-width:720px; width:95vw;">
+      <div class="modal" style="max-width:780px; width:95vw;">
         <div class="modal-header"><h2 class="modal-title">Create Task</h2><button class="modal-close" data-close="addAssignmentModal" type="button">✕</button></div>
         <div class="modal-body">
           <label class="form-label">Task Description</label>
           <input class="form-input" id="asgTitle" type="text" placeholder="What needs to be done?">
           <label class="form-label">Assign To <span style="color:var(--text-muted);font-weight:400;">(select one or more)</span></label>
+          <input type="text" id="assigneeSearchInput" class="assignee-search" placeholder="🔍 Search members..." autocomplete="off">
           <div id="assigneeRadioList" class="assignee-picker"></div>
         </div>
         <div class="modal-footer">
