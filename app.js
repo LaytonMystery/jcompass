@@ -1,7 +1,11 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v6.4                                          ║
- * ║  · Multi-assignee tasks (comma-separated, chip display)             ║
+ * ║  JOURNALIST'S COMPASS v6.6                                          ║
+ * ║  · Multi-assignee tasks                                             ║
+ * ║  · Search bars in both pickers (delegated listeners)                ║
+ * ║  · Calendar dots for mobile                                         ║
+ * ║  · Live progress slider                                             ║
+ * ║  · Delegated button handlers + init error logging                   ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
@@ -62,8 +66,9 @@ const isPrivileged = () => !!currentUser && PRIVILEGED_ROLES.includes(currentUse
 const isAdmin = () => !!currentUser && currentUser.role === 'ADMIN';
 const isAssignable = (role) => role !== 'ADMIN';
 
-// ─── Multi-assignee helpers ─────────────────────────────────────────────
-// Assignees are stored as "Name1, Name2, Name3"
+const reporterSelection = new Set();
+const assigneeSelection = new Set();
+
 function parseAssignees(str) {
   return (str || '').split(',').map(s => s.trim()).filter(Boolean);
 }
@@ -1090,27 +1095,47 @@ function generateDeploymentsGrid() {
 
 function populateReporterCheckboxes() {
   const container = document.getElementById('reporterCheckboxList');
+  const searchInput = document.getElementById('reporterSearchInput');
   if (!container) return;
-  const staffUsers = registeredUsersDB.filter(u => isAssignable(u.role));
+
+  const q = (searchInput?.value || '').trim().toLowerCase();
+  const staffUsers = registeredUsersDB
+    .filter(u => isAssignable(u.role))
+    .filter(u => !q || u.name.toLowerCase().includes(q));
+
   if (staffUsers.length === 0) {
-    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">No staff members available.</div>';
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem;">' +
+      (q ? 'No members match "' + esc(q) + '".' : 'No staff members available.') + '</div>';
     return;
   }
-  container.innerHTML = staffUsers.map(u =>
-    '<label style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem; border-radius:6px; cursor:pointer;">' +
-      '<input type="checkbox" value="' + esc(u.name) + '" style="width:18px; height:18px; accent-color:var(--accent-light); cursor:pointer;">' +
+
+  container.innerHTML = staffUsers.map(u => {
+    const checked = reporterSelection.has(u.name) ? ' checked' : '';
+    return '<label style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem; border-radius:6px; cursor:pointer;">' +
+      '<input type="checkbox" value="' + esc(u.name) + '" data-reporter-checkbox' + checked + ' style="width:18px; height:18px; accent-color:var(--accent-light); cursor:pointer;">' +
       '<div style="display:flex; align-items:center; gap:0.5rem; flex:1;">' +
         '<div class="staff-avatar-mini">' + esc(u.code || '??') + '</div>' +
         '<span style="font-weight:600; font-size:0.9rem;">' + esc(u.name) + '</span>' +
         '<span style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase;">' + esc(u.role) + '</span>' +
       '</div>' +
-    '</label>'
-  ).join('');
+    '</label>';
+  }).join('');
+
+  container.querySelectorAll('input[data-reporter-checkbox]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) reporterSelection.add(cb.value);
+      else reporterSelection.delete(cb.value);
+    });
+  });
 }
 
 function openDeploymentModal() {
+  reporterSelection.clear();
+  const s = document.getElementById('reporterSearchInput');
+  if (s) s.value = '';
   populateReporterCheckboxes();
   document.getElementById('addBeatModal').classList.add('active');
+  setTimeout(() => s?.focus(), 100);
 }
 
 function openDeploymentProfile(deploymentId) {
@@ -1207,7 +1232,6 @@ function generateAssignmentsGrid() {
     const canView = isAssignee || canManage;
     const isGroup = assignees.length > 1;
 
-    // Status badge with optional group tag
     const groupTag = isGroup
       ? '<span class="group-tag" title="Group task">👥 Group · ' + assignees.length + '</span> '
       : '';
@@ -1249,30 +1273,49 @@ function generateAssignmentsGrid() {
 
 function populateAssigneeCheckboxes() {
   const container = document.getElementById('assigneeRadioList');
+  const searchInput = document.getElementById('assigneeSearchInput');
   if (!container) return;
-  const staffUsers = registeredUsersDB.filter(u => isAssignable(u.role));
+
+  const q = (searchInput?.value || '').trim().toLowerCase();
+  const staffUsers = registeredUsersDB
+    .filter(u => isAssignable(u.role))
+    .filter(u => !q || u.name.toLowerCase().includes(q));
+
   if (staffUsers.length === 0) {
-    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">No staff members available. Create staff accounts first.</div>';
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem;">' +
+      (q ? 'No members match "' + esc(q) + '".' : 'No staff members available. Create staff accounts first.') + '</div>';
     return;
   }
-  container.innerHTML = staffUsers.map(u =>
-    '<label style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem; border-radius:6px; cursor:pointer;">' +
-      '<input type="checkbox" value="' + esc(u.name) + '" style="width:18px; height:18px; accent-color:var(--accent-light); cursor:pointer;">' +
+
+  container.innerHTML = staffUsers.map(u => {
+    const checked = assigneeSelection.has(u.name) ? ' checked' : '';
+    return '<label style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem; border-radius:6px; cursor:pointer;">' +
+      '<input type="checkbox" value="' + esc(u.name) + '" data-assignee-checkbox' + checked + ' style="width:18px; height:18px; accent-color:var(--accent-light); cursor:pointer;">' +
       '<div style="display:flex; align-items:center; gap:0.5rem; flex:1;">' +
         '<div class="staff-avatar-mini">' + esc(u.code || '??') + '</div>' +
         '<span style="font-weight:600; font-size:0.9rem;">' + esc(u.name) + '</span>' +
         '<span style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase;">' + esc(u.role) + '</span>' +
       '</div>' +
-    '</label>'
-  ).join('');
+    '</label>';
+  }).join('');
+
+  container.querySelectorAll('input[data-assignee-checkbox]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) assigneeSelection.add(cb.value);
+      else assigneeSelection.delete(cb.value);
+    });
+  });
 }
 
-// Kept as an alias so existing calls don't break
 const populateAssigneeRadios = populateAssigneeCheckboxes;
 
 function openAssignmentModal() {
+  assigneeSelection.clear();
+  const s = document.getElementById('assigneeSearchInput');
+  if (s) s.value = '';
   populateAssigneeCheckboxes();
   document.getElementById('addAssignmentModal').classList.add('active');
+  setTimeout(() => s?.focus(), 100);
 }
 
 function openSubmissionModal(assignmentId) {
@@ -1385,7 +1428,6 @@ async function submitAssignment() {
   }
   Object.assign(a, updates);
 
-  // Notify all assignees + the creator
   const notifyList = new Set(parseAssignees(a.assignee));
   if (a.created_by) notifyList.add(a.created_by);
   for (const person of notifyList) {
@@ -1418,7 +1460,6 @@ async function reviewSubmission(approved) {
   Object.assign(a, updates);
   await logAudit(approved ? 'approve_submission' : 'reject_submission', 'assignment', a.id, a.title, approved ? 'Approved' : 'Returned');
 
-  // Notify all assignees
   for (const person of parseAssignees(a.assignee)) {
     if (person.toLowerCase() === currentUser.name.toLowerCase()) continue;
     await dispatchPing(currentUser.name, person, approved
@@ -1482,7 +1523,6 @@ function generateDeadlineCalendarGrid() {
   const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
   const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
 
-  // Today marker (for the highlighted "today" cell)
   const todayIso = Utils.todayLocalISO();
 
   for (let i = 0; i < firstDay; i++) {
@@ -1514,13 +1554,11 @@ function generateDeadlineCalendarGrid() {
       if (hasE) cell.classList.add('has-events');
     }
 
-    // Day number
     const numEl = document.createElement('div');
     numEl.className = 'cal-num';
     numEl.textContent = day;
     cell.appendChild(numEl);
 
-    // Dot indicators (shown on mobile via CSS)
     if (hasAny) {
       const dots = document.createElement('div');
       dots.className = 'cal-dots';
@@ -1530,7 +1568,6 @@ function generateDeadlineCalendarGrid() {
       cell.appendChild(dots);
     }
 
-    // Desktop entries (hidden on mobile via style.css)
     dayProjects.forEach(p => {
       const entry = document.createElement('div');
       entry.className = 'cal-entry cal-entry-project';
@@ -2549,6 +2586,7 @@ function initSupabaseClient() {
 }
 
 function initializeApp() {
+  try {
   wipeLegacyCache();
   initSupabaseClient();
   initTheme();
@@ -2682,7 +2720,6 @@ function initializeApp() {
 
   document.getElementById('profileSaveBtn')?.addEventListener('click', saveProjectProfile);
 
-  /* Progress slider — live sync with the fill bar + % label */
   document.getElementById('profileProgressInput')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10) || 0;
     const bar = document.getElementById('profileProgressBar');
@@ -2717,10 +2754,17 @@ function initializeApp() {
     });
   });
 
-  /* ── Delegated listeners for the two assignee search bars ──────────
-     Using document-level delegation so filtering works even if the
-     modal DOM is rebuilt. Live-filter on every keystroke, plus a
-     visible search button for users who expect one. */
+  /* ── Delegated button handlers for the two "add" buttons ───────────
+     These are on document, so they survive even if initializeApp()
+     throws partway through. */
+  document.addEventListener('click', (e) => {
+    const beatBtn = e.target.closest('#addBeatBtn');
+    if (beatBtn) { e.preventDefault(); e.stopPropagation(); openDeploymentModal(); return; }
+    const asgBtn = e.target.closest('#addAssignmentBtn');
+    if (asgBtn) { e.preventDefault(); e.stopPropagation(); openAssignmentModal(); return; }
+  });
+
+  /* ── Delegated listeners for the two assignee search bars ────────── */
   document.addEventListener('input', (e) => {
     if (!e.target) return;
     if (e.target.id === 'reporterSearchInput') populateReporterCheckboxes();
@@ -2789,6 +2833,9 @@ function initializeApp() {
     document.getElementById('beatName').value = '';
     document.getElementById('beatLocation').value = '';
     document.getElementById('beatDescription').value = '';
+    reporterSelection.clear();
+    const rSearch = document.getElementById('reporterSearchInput');
+    if (rSearch) rSearch.value = '';
     triggerNotificationToast('✓ Deployed. Notified ' + selected.length + ' member(s).');
   });
 
@@ -2826,6 +2873,9 @@ function initializeApp() {
     generateAssignmentsGrid();
     document.getElementById('addAssignmentModal').classList.remove('active');
     document.getElementById('asgTitle').value = '';
+    assigneeSelection.clear();
+    const aSearch = document.getElementById('assigneeSearchInput');
+    if (aSearch) aSearch.value = '';
     triggerNotificationToast('✓ Task created for ' + selectedBoxes.length + ' member(s).');
   });
 
@@ -2853,7 +2903,11 @@ function initializeApp() {
 
   document.getElementById('generateActivitySummaryBtn')?.addEventListener('click', generateActivitySummaryReport);
 
-  console.log('✅ JCompass initialized (v6.4)');
+  console.log('✅ JCompass initialized (v6.6)');
+  } catch (err) {
+    console.error('❌ JCompass initializeApp error:', err);
+    console.error(err && err.stack);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
