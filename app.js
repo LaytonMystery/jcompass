@@ -1,11 +1,9 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v6.6                                          ║
- * ║  · Multi-assignee tasks                                             ║
- * ║  · Search bars in both pickers (delegated listeners)                ║
- * ║  · Calendar dots for mobile                                         ║
- * ║  · Live progress slider                                             ║
- * ║  · Delegated button handlers + init error logging                   ║
+ * ║  JOURNALIST'S COMPASS v6.7                                          ║
+ * ║  · Overdue projects modal (extend / archive)                        ║
+ * ║  · Multi-assignee tasks + search pickers                            ║
+ * ║  · Editor in Chief role                                             ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
@@ -33,13 +31,6 @@ const CACHE_KEYS = {
 
 const cacheLoad = (key, fb) => Utils.store.get(key, fb);
 const cacheSave = (key, val) => Utils.store.set(key, val);
-
-function cacheClearAll() {
-  Object.values(CACHE_KEYS).forEach(k => {
-    if (k === 'jcompass_dismissed_notices') return;
-    Utils.store.del(k);
-  });
-}
 
 function wipeLegacyCache() {
   const keep = [SESSION_KEY, 'jcompass_theme', 'jcompass_mode'];
@@ -378,29 +369,12 @@ function subscribeRealtime() {
    SECTION 6: NOTIFICATIONS
    ═══════════════════════════════════════════════════════════════════════ */
 
-function refreshNotificationPermissionUI() {
-  const btn = document.getElementById('enableNotificationsBtn');
-  const label = document.getElementById('notificationStatusLabel');
-  if (!btn || !label || !('Notification' in window)) {
-    if (label) label.textContent = 'Push alerts not supported.';
-    if (btn) btn.style.display = 'none';
-    return;
-  }
-  if (Notification.permission === 'granted') {
-    btn.textContent = '🔔 Push Alerts Enabled'; btn.disabled = true;
-    label.textContent = 'You will get device popups for new messages.';
-  } else if (Notification.permission === 'denied') {
-    btn.textContent = '🔕 Push Alerts Blocked'; btn.disabled = true;
-    label.textContent = 'Notifications blocked in browser.';
-  } else {
-    btn.textContent = '🔔 Enable Push Alerts'; btn.disabled = false;
-    label.textContent = 'Not enabled yet.';
-  }
-}
-
-function requestNotificationPermission() {
-  if (!('Notification' in window)) return;
-  Notification.requestPermission().then(refreshNotificationPermissionUI);
+function triggerNotificationToast(msg) {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.innerText = msg;
+  t.classList.add('active');
+  setTimeout(() => t.classList.remove('active'), 3000);
 }
 
 function notifyIncomingPing(ann) {
@@ -419,14 +393,6 @@ function notifyIncomingPing(ann) {
   } else {
     triggerNotificationToast(body);
   }
-}
-
-function triggerNotificationToast(msg) {
-  const t = document.getElementById('toast');
-  if (!t) return;
-  t.innerText = msg;
-  t.classList.add('active');
-  setTimeout(() => t.classList.remove('active'), 3000);
 }
 
 async function dispatchPing(sender, target, text) {
@@ -476,7 +442,6 @@ function evaluateClearancePermissions() {
   document.querySelectorAll('.admin-only-nav').forEach(el => {
     el.style.display = showAdminNav ? '' : 'none';
   });
-
   document.querySelectorAll('[data-admin-only]').forEach(el => {
     el.style.display = isAdmin() ? '' : 'none';
   });
@@ -790,6 +755,153 @@ async function deleteProject(projectId) {
   document.getElementById('projectProfileModal').classList.remove('active');
   rebuildApplicationDOMViews();
   triggerNotificationToast('✓ Project deleted.');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION 10b: OVERDUE PROJECTS — extend / archive
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function ensureOverdueModal() {
+  if (document.getElementById('overdueProjectsModal')) return;
+  const html = `
+    <div class="modal-overlay" id="overdueProjectsModal">
+      <div class="modal" style="max-width:720px; width:95vw;">
+        <div class="modal-header">
+          <div style="display:flex;flex-direction:column;gap:0.25rem;">
+            <div class="card-category" style="color:#fc8181;">⚠️ OVERDUE PROJECTS</div>
+            <h2 class="modal-title">Needs Attention</h2>
+          </div>
+          <button class="modal-close" data-close="overdueProjectsModal" type="button">✕</button>
+        </div>
+        <div class="modal-body" id="overdueProjectsBody" style="gap:0.85rem;"></div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" data-close="overdueProjectsModal" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.querySelectorAll('[data-close="overdueProjectsModal"]').forEach(btn => {
+    btn.addEventListener('click', () => document.getElementById('overdueProjectsModal').classList.remove('active'));
+  });
+}
+
+function getOverdueProjects() {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return projects.filter(p => {
+    if (p.archived) return false;
+    if (!p.deadline) return false;
+    if (p.status === 'FILED' || p.status === 'PUBLISHED') return false;
+    return new Date(p.deadline) < today;
+  });
+}
+
+function openOverdueProjectsModal() {
+  ensureOverdueModal();
+  const body = document.getElementById('overdueProjectsBody');
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const overdue = getOverdueProjects();
+
+  if (overdue.length === 0) {
+    body.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:2rem;">No overdue projects. 🎉</div>';
+    document.getElementById('overdueProjectsModal').classList.add('active');
+    return;
+  }
+
+  // Default the extend date to tomorrow
+  const tomorrow = new Date(today.getTime() + 86400000);
+  const defaultDate = tomorrow.toISOString().split('T')[0];
+
+  body.innerHTML = overdue.map(p => {
+    const days = Math.ceil((today - new Date(p.deadline)) / 86400000);
+    return `
+      <div class="overdue-row">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:0.95rem;">${esc(p.title)}</div>
+          <div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.2rem;">
+            📅 Deadline: <b>${esc(p.deadline)}</b> · <span style="color:#fc8181;font-weight:700;">${days} day${days === 1 ? '' : 's'} overdue</span>
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.15rem;">
+            ${esc(p.category || '—')} · Assigned: ${esc(p.reporter || '—')}
+          </div>
+        </div>
+        <div class="overdue-actions">
+          <input type="date" class="overdue-date-input" data-date-for="${esc(p.id)}" value="${esc(defaultDate)}">
+          <button class="btn btn-primary overdue-extend-btn" data-extend-id="${esc(p.id)}" type="button" title="Extend deadline">📅 Extend</button>
+          <button class="btn btn-ghost overdue-archive-btn" data-archive-id="${esc(p.id)}" type="button" style="color:var(--warning);border-color:rgba(221,107,32,0.4);" title="Archive project">🗄 Archive</button>
+          <button class="btn btn-ghost overdue-open-btn" data-open-id="${esc(p.id)}" type="button" title="Open details">📋 Open</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  body.querySelectorAll('[data-extend-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = parseInt(btn.dataset.extendId, 10);
+      const dateInput = body.querySelector(`[data-date-for="${id}"]`);
+      const newDate = dateInput?.value;
+      if (!newDate) { triggerNotificationToast('Pick a new deadline date first.'); return; }
+      await extendProjectDeadline(id, newDate);
+      openOverdueProjectsModal(); // re-render
+    });
+  });
+  body.querySelectorAll('[data-archive-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = parseInt(btn.dataset.archiveId, 10);
+      await archiveProjectFromOverdue(id);
+      openOverdueProjectsModal();
+    });
+  });
+  body.querySelectorAll('[data-open-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = parseInt(btn.dataset.openId, 10);
+      document.getElementById('overdueProjectsModal').classList.remove('active');
+      openProjectProfile(id);
+    });
+  });
+
+  document.getElementById('overdueProjectsModal').classList.add('active');
+}
+
+async function extendProjectDeadline(projectId, newDate) {
+  if (!isPrivileged()) { triggerNotificationToast('Admin access required.'); return; }
+  const p = projects.find(x => x.id === projectId);
+  if (!p) return;
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient.from('projects').update({ deadline: newDate }).eq('id', projectId);
+      if (error) throw error;
+    } catch (err) { triggerNotificationToast('Update failed: ' + err.message); return; }
+  }
+  const oldDate = p.deadline;
+  p.deadline = newDate;
+  await logAudit('extend_project_deadline', 'project', p.id, p.title, `${oldDate} → ${newDate}`);
+  flushCachedCollections();
+  generateNotificationBar();
+  generateProjectDashboard();
+  generateDeadlineCalendarGrid();
+  triggerNotificationToast(`✓ "${p.title}" extended to ${newDate}`);
+}
+
+async function archiveProjectFromOverdue(projectId) {
+  if (!isPrivileged()) { triggerNotificationToast('Admin access required.'); return; }
+  const p = projects.find(x => x.id === projectId);
+  if (!p) return;
+  if (!confirm('Archive "' + p.title + '"?')) return;
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient.from('projects').update({ archived: true }).eq('id', projectId);
+      if (error) throw error;
+    } catch (err) { triggerNotificationToast('Archive failed: ' + err.message); return; }
+  }
+  p.archived = true;
+  await logAudit('archive_project', 'project', p.id, p.title, 'Archived from overdue list');
+  flushCachedCollections();
+  generateNotificationBar();
+  generateProjectDashboard();
+  generateArchiveGrid();
+  generateDashboardStats();
+  triggerNotificationToast('✓ Project archived.');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1203,7 +1315,7 @@ async function archiveDeployment(deploymentId) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   SECTION 15: ASSIGNMENTS (multi-assignee)
+   SECTION 15: ASSIGNMENTS
    ═══════════════════════════════════════════════════════════════════════ */
 
 function generateAssignmentsGrid() {
@@ -1306,8 +1418,6 @@ function populateAssigneeCheckboxes() {
     });
   });
 }
-
-const populateAssigneeRadios = populateAssigneeCheckboxes;
 
 function openAssignmentModal() {
   assigneeSelection.clear();
@@ -2352,7 +2462,8 @@ function renderAuditLogTable() {
       delete: '#fc8181', archive: '#fbd38d', create: '#9ae6b4',
       submit: '#90cdf4', approve: '#81e6d9', update: '#cbd5e1',
       notify: '#a78bfa', ping: '#a78bfa', clear: '#f43f5e', deny: '#f43f5e',
-      reject: '#f43f5e', request: '#fbd38d', restore: '#9ae6b4'
+      reject: '#f43f5e', request: '#fbd38d', restore: '#9ae6b4',
+      extend: '#fbd38d'
     };
     const key = Object.keys(actionColors).find(k => (e.action || '').toLowerCase().includes(k));
     const color = actionColors[key] || '#cbd5e1';
@@ -2409,7 +2520,7 @@ function exportAttendanceCSV() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   SECTION 25: NOTIFICATION BAR
+   SECTION 25: NOTIFICATION BAR (with overdue "Review" action)
    ═══════════════════════════════════════════════════════════════════════ */
 
 function dismissNotice(noticeId) {
@@ -2429,14 +2540,18 @@ function generateNotificationBar() {
   dismissedNoticeIds = dismissedNoticeIds.filter(id => id.startsWith(dayKey));
   cacheSave(CACHE_KEYS.dismissedNotices, dismissedNoticeIds);
 
-  const active = projects.filter(p => !p.archived);
-  const overdue = active.filter(p => {
-    if (!p.deadline || p.status === 'FILED' || p.status === 'PUBLISHED') return false;
-    return new Date(p.deadline) < today;
-  });
+  const overdue = getOverdueProjects();
 
   const notices = [];
-  if (overdue.length > 0) notices.push({ id: dayKey + ':overdue-' + overdue.length, type: 'danger', icon: '⚠', text: overdue.length + ' project(s) overdue.' });
+  if (overdue.length > 0) {
+    notices.push({
+      id: dayKey + ':overdue-' + overdue.length,
+      type: 'danger',
+      icon: '⚠',
+      text: overdue.length + ' project(s) overdue.',
+      action: isPrivileged() ? { label: 'Review & Extend', handler: openOverdueProjectsModal } : null
+    });
+  }
 
   if (isPrivileged()) {
     const pendingReqs = archiveRequests.filter(r => r.status === 'PENDING').length;
@@ -2451,15 +2566,27 @@ function generateNotificationBar() {
   if (myAssignments > 0) notices.push({ id: dayKey + ':my-assignments-' + myAssignments, type: 'info', icon: '🔔', text: myAssignments + ' task(s) assigned to you.' });
 
   const visible = notices.filter(n => !dismissedNoticeIds.includes(n.id));
-  container.innerHTML = visible.map(n =>
+  container.innerHTML = visible.map((n, i) =>
     '<div class="notice-bar notice-' + n.type + '">' +
       '<span class="notice-icon">' + n.icon + '</span>' +
       '<span class="notice-text">' + esc(n.text) + '</span>' +
-      '<button class="notice-dismiss-btn" type="button">✕</button>' +
+      (n.action ? '<button class="notice-action-btn" data-notice-action="' + i + '" type="button">' + esc(n.action.label) + '</button>' : '') +
+      '<button class="notice-dismiss-btn" type="button" data-notice-dismiss="' + i + '">✕</button>' +
     '</div>'
   ).join('');
-  container.querySelectorAll('.notice-dismiss-btn').forEach((btn, i) => {
-    btn.addEventListener('click', () => dismissNotice(visible[i].id));
+
+  container.querySelectorAll('[data-notice-dismiss]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = parseInt(btn.dataset.noticeDismiss, 10);
+      dismissNotice(visible[i].id);
+    });
+  });
+  container.querySelectorAll('[data-notice-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = parseInt(btn.dataset.noticeAction, 10);
+      const action = visible[i]?.action;
+      if (action && typeof action.handler === 'function') action.handler();
+    });
   });
 }
 
@@ -2498,7 +2625,7 @@ function injectAdminClearButtons() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   SECTION 27: CONTROL TRAY
+   SECTION 27: CONTROL TRAY + THEME
    ═══════════════════════════════════════════════════════════════════════ */
 
 function wireControlTray() {
@@ -2684,8 +2811,31 @@ function initializeApp() {
 
   document.getElementById('saveUserBtn')?.addEventListener('click', createNewUser);
 
-  refreshNotificationPermissionUI();
-  document.getElementById('enableNotificationsBtn')?.addEventListener('click', requestNotificationPermission);
+  /* Delegated handlers */
+  document.addEventListener('click', (e) => {
+    const beatBtn = e.target.closest('#addBeatBtn');
+    if (beatBtn) { e.preventDefault(); e.stopPropagation(); openDeploymentModal(); return; }
+    const asgBtn = e.target.closest('#addAssignmentBtn');
+    if (asgBtn) { e.preventDefault(); e.stopPropagation(); openAssignmentModal(); return; }
+  });
+
+  document.addEventListener('input', (e) => {
+    if (!e.target) return;
+    if (e.target.id === 'reporterSearchInput') populateReporterCheckboxes();
+    if (e.target.id === 'assigneeSearchInput') populateAssigneeCheckboxes();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || !e.target) return;
+    if (e.target.id === 'reporterSearchInput') { e.preventDefault(); populateReporterCheckboxes(); }
+    if (e.target.id === 'assigneeSearchInput') { e.preventDefault(); populateAssigneeCheckboxes(); }
+  });
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-search-trigger]');
+    if (!btn) return;
+    const which = btn.dataset.searchTrigger;
+    if (which === 'reporter') populateReporterCheckboxes();
+    if (which === 'assignee') populateAssigneeCheckboxes();
+  });
 
   document.getElementById('calPrevMonth')?.addEventListener('click', () => {
     calendarMonth--; if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
@@ -2752,35 +2902,6 @@ function initializeApp() {
       const m = document.getElementById(btn.getAttribute('data-close'));
       if (m) m.classList.remove('active');
     });
-  });
-
-  /* ── Delegated button handlers for the two "add" buttons ───────────
-     These are on document, so they survive even if initializeApp()
-     throws partway through. */
-  document.addEventListener('click', (e) => {
-    const beatBtn = e.target.closest('#addBeatBtn');
-    if (beatBtn) { e.preventDefault(); e.stopPropagation(); openDeploymentModal(); return; }
-    const asgBtn = e.target.closest('#addAssignmentBtn');
-    if (asgBtn) { e.preventDefault(); e.stopPropagation(); openAssignmentModal(); return; }
-  });
-
-  /* ── Delegated listeners for the two assignee search bars ────────── */
-  document.addEventListener('input', (e) => {
-    if (!e.target) return;
-    if (e.target.id === 'reporterSearchInput') populateReporterCheckboxes();
-    if (e.target.id === 'assigneeSearchInput') populateAssigneeCheckboxes();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' || !e.target) return;
-    if (e.target.id === 'reporterSearchInput') { e.preventDefault(); populateReporterCheckboxes(); }
-    if (e.target.id === 'assigneeSearchInput') { e.preventDefault(); populateAssigneeCheckboxes(); }
-  });
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-search-trigger]');
-    if (!btn) return;
-    const which = btn.dataset.searchTrigger;
-    if (which === 'reporter') populateReporterCheckboxes();
-    if (which === 'assignee') populateAssigneeCheckboxes();
   });
 
   const modalOpeners = [
@@ -2903,7 +3024,7 @@ function initializeApp() {
 
   document.getElementById('generateActivitySummaryBtn')?.addEventListener('click', generateActivitySummaryReport);
 
-  console.log('✅ JCompass initialized (v6.6)');
+  console.log('✅ JCompass initialized (v6.7)');
   } catch (err) {
     console.error('❌ JCompass initializeApp error:', err);
     console.error(err && err.stack);

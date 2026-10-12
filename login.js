@@ -1,174 +1,126 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Login Controller (v8)
- *  • 3-strike lockout with live countdown
- *  • Lockout persists across page refresh
+ *  JCompass — Login Controller (v8.1)
+ *  · Password show/hide toggle
+ *  · Updated "Need help" message
  * ══════════════════════════════════════════════════════════════════════
  */
-(function () {
-  const { CONFIG, Session } = window.JC;
-  const LOCKOUT_KEY = 'jcompass_lockout';
+(function buildLoginDOM() {
+  const UI = `
+    <div class="login-hero">
+      <div class="login-stars"></div>
 
-  const form      = document.getElementById('loginForm');
-  const userInput = document.getElementById('username');
+      <nav class="login-nav">
+        <div class="login-brand">
+          <div class="login-brand-logo">
+            <img src="favicon.ico" alt="Journalist's Compass" onerror="this.replaceWith('🧭')">
+          </div>
+          <span class="login-brand-name">Journalist's Compass</span>
+        </div>
+        <div class="login-nav-right">
+          <span class="login-nav-badge">🔒 Secure Terminal</span>
+        </div>
+      </nav>
+
+      <div class="login-stage">
+        <div class="login-card" id="loginCard">
+          <button class="login-card-close" id="loginCardClose" type="button" title="Clear form">✕</button>
+
+          <div class="login-card-header">
+            <h2 class="login-card-title">Login</h2>
+            <p class="login-card-subtitle">Sign in to your Newsroom desk profile</p>
+          </div>
+
+          <div class="auth-error" id="authError" style="display:none;">Invalid credentials.</div>
+
+          <form id="loginForm" autocomplete="on" novalidate>
+            <div class="glass-field">
+              <label for="username">Username</label>
+              <input type="text" id="username" placeholder="e.g., Staff Correspondent" autocomplete="username" required>
+              <span class="glass-field-icon">👤</span>
+            </div>
+
+            <div class="glass-field glass-field-password">
+              <label for="password">Password</label>
+              <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
+              <button type="button" class="password-toggle" id="passwordToggle" aria-label="Show password" title="Show password">
+                <span class="eye-icon eye-show">👁</span>
+                <span class="eye-icon eye-hide" hidden>🙈</span>
+              </button>
+            </div>
+
+            <div class="glass-options">
+              <label class="glass-checkbox">
+                <input type="checkbox" id="rememberMe">
+                <span>Remember me</span>
+              </label>
+              <button type="button" class="glass-link" id="forgotBtn">Need help?</button>
+            </div>
+
+            <button type="submit" class="glass-submit" id="loginSubmitBtn">Login</button>
+          </form>
+
+          <div class="glass-footer">
+            🔒 Accounts are issued and managed by Administrators.
+          </div>
+        </div>
+      </div>
+
+      <div class="login-loading-overlay" id="loginLoading">
+        <div class="spinner"></div>
+        <span>Authenticating…</span>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('afterbegin', UI);
+
+  /* ── Password show/hide toggle ─────────────────────────────────── */
   const passInput = document.getElementById('password');
-  const errorBox  = document.getElementById('authError');
-  const submitBtn = document.getElementById('loginSubmitBtn');
-  const loading   = document.getElementById('loginLoading');
-
-  if (!window.supabase) {
-    errorBox.textContent = 'Authentication library failed to load. Refresh the page.';
-    errorBox.style.display = 'block';
-    return;
+  const toggleBtn = document.getElementById('passwordToggle');
+  if (passInput && toggleBtn) {
+    const eyeShow = toggleBtn.querySelector('.eye-show');
+    const eyeHide = toggleBtn.querySelector('.eye-hide');
+    toggleBtn.addEventListener('click', () => {
+      const isHidden = passInput.type === 'password';
+      passInput.type = isHidden ? 'text' : 'password';
+      if (eyeShow) eyeShow.hidden = isHidden;
+      if (eyeHide) eyeHide.hidden = !isHidden;
+      toggleBtn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+      toggleBtn.setAttribute('title', isHidden ? 'Hide password' : 'Show password');
+      // Keep focus on the input so the user can keep typing
+      passInput.focus();
+    });
   }
 
-  const supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
-  let lockoutTimer = null;
-
-  const showError = m => { errorBox.textContent = m; errorBox.style.display = 'block'; };
-  const hideError = () => { errorBox.style.display = 'none'; };
-  const setBusy = b => {
-    submitBtn.disabled = b;
-    submitBtn.textContent = b ? 'Authenticating…' : 'Login';
-    if (loading) loading.classList.toggle('active', b);
-  };
-
-  /* ── Persist lockout across reloads ─────────────────────────────── */
-  function saveLockout(name, seconds) {
-    try {
-      localStorage.setItem(LOCKOUT_KEY, JSON.stringify({
-        name, until: Date.now() + seconds * 1000
-      }));
-    } catch {}
-  }
-  function clearLockout() {
-    try { localStorage.removeItem(LOCKOUT_KEY); } catch {}
-  }
-  function restoreLockoutIfAny() {
-    let raw;
-    try { raw = localStorage.getItem(LOCKOUT_KEY); } catch {}
-    if (!raw) return;
-    let data;
-    try { data = JSON.parse(raw); } catch { clearLockout(); return; }
-    const remaining = Math.ceil((data.until - Date.now()) / 1000);
-    if (remaining > 0) {
-      if (userInput && data.name) userInput.value = data.name;
-      startLockoutCountdown(remaining);
-    } else {
-      clearLockout();
-    }
+  /* ── X button clears the form ──────────────────────────────────── */
+  const closeBtn = document.getElementById('loginCardClose');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      const u = document.getElementById('username');
+      const p = document.getElementById('password');
+      const err = document.getElementById('authError');
+      if (u) u.value = '';
+      if (p) { p.value = ''; p.type = 'password'; }
+      if (err) err.style.display = 'none';
+      // reset eye icons
+      const show = document.querySelector('.password-toggle .eye-show');
+      const hide = document.querySelector('.password-toggle .eye-hide');
+      if (show) show.hidden = false;
+      if (hide) hide.hidden = true;
+      if (u) u.focus();
+    });
   }
 
-  function startLockoutCountdown(seconds) {
-    let remaining = Math.max(1, Math.floor(seconds));
-    if (lockoutTimer) clearInterval(lockoutTimer);
-    submitBtn.disabled = true;
-
-    const tick = () => {
-      const m = Math.floor(remaining / 60);
-      const s = String(remaining % 60).padStart(2, '0');
-      const label = m > 0 ? `${m}:${s}` : `${s}s`;
-      showError(`Too many failed attempts. Try again in ${label}.`);
-      submitBtn.textContent = `Locked — ${label}`;
-
-      if (remaining <= 0) {
-        clearInterval(lockoutTimer);
-        lockoutTimer = null;
-        clearLockout();
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Login';
-        showError('You can try again now.');
-      }
-      remaining--;
-    };
-    tick();
-    lockoutTimer = setInterval(tick, 1000);
+  /* ── "Need help?" shows the admin contact message ──────────────── */
+  const forgotBtn = document.getElementById('forgotBtn');
+  if (forgotBtn) {
+    forgotBtn.addEventListener('click', () => {
+      const t = document.getElementById('toast');
+      if (!t) return;
+      t.innerText = 'Contact your head administrator for help on your account.';
+      t.classList.add('active');
+      setTimeout(() => t.classList.remove('active'), 4000);
+    });
   }
-
-  async function handleLogin(e) {
-    if (e) e.preventDefault();
-    if (lockoutTimer) return;  // still counting down
-    hideError();
-
-    const name = userInput.value.trim();
-    const pass = passInput.value;
-    if (!name || !pass) { showError('Both username and password are required.'); return; }
-
-    setBusy(true);
-
-    try {
-      const { data, error } = await supabaseClient.rpc('verify_login', { p_name: name, p_pass: pass });
-
-      if (error) {
-        console.error('Supabase auth error:', error);
-        showError('Unable to reach authentication service. Please try again.');
-        setBusy(false);
-        return;
-      }
-
-      /* ── Locked out ───────────────────────────────────────────── */
-      if (data && data.error === 'locked') {
-        setBusy(false);
-        const wait = data.retry_after_seconds || 120;
-        saveLockout(name, wait);
-        startLockoutCountdown(wait);
-        return;
-      }
-
-      /* ── Wrong password ───────────────────────────────────────── */
-      if (!data || !data.ok) {
-        setBusy(false);
-        const left = data && typeof data.attempts_remaining === 'number'
-          ? data.attempts_remaining
-          : null;
-
-        if (left === 0) {
-          saveLockout(name, 120);
-          startLockoutCountdown(120);
-        } else if (left === 1) {
-          showError('Invalid credentials. 1 attempt remaining before temporary lockout.');
-        } else if (left === 2) {
-          showError('Invalid credentials. 2 attempts remaining.');
-        } else {
-          showError('Invalid credentials.');
-        }
-        return;
-      }
-
-      /* ── Success ──────────────────────────────────────────────── */
-      clearLockout();
-      Session.save(data.token);
-      userInput.value = '';
-      passInput.value = '';
-      window.location.replace(CONFIG.HOME_PAGE);
-    } catch (err) {
-      console.error('Login exception:', err);
-      showError('Unexpected error. Please try again.');
-      setBusy(false);
-    }
-  }
-
-  form.addEventListener('submit', handleLogin);
-  [userInput, passInput].forEach(el => el.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); form.requestSubmit(); }
-  }));
-
-  /* ── On page load: restore any active lockout ───────────────────── */
-  restoreLockoutIfAny();
-
-  /* ── When the user changes the username, re-check for a stored lock */
-  userInput?.addEventListener('input', () => {
-    let raw;
-    try { raw = localStorage.getItem(LOCKOUT_KEY); } catch {}
-    if (!raw) return;
-    try {
-      const data = JSON.parse(raw);
-      if (data.name && data.name.toLowerCase() === userInput.value.trim().toLowerCase()) {
-        const remaining = Math.ceil((data.until - Date.now()) / 1000);
-        if (remaining > 0 && !lockoutTimer) startLockoutCountdown(remaining);
-      }
-    } catch {}
-  });
-
-  console.log('JCompass: login controller ready.');
 })();

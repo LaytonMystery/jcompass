@@ -734,3 +734,158 @@ body[data-mode="light"].login-page {
   overflow-y: auto !important;
   max-height: calc(90vh - 180px) !important;
 }
+/* ══════════════════════════════════════════════════════════════════════
+   PASSWORD SHOW/HIDE TOGGLE (login screen)
+   ══════════════════════════════════════════════════════════════════════ */
+
+.glass-field-password {
+  position: relative;
+}
+
+.glass-field-password input {
+  padding-right: 3rem !important;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0;
+  bottom: 0.35rem;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: rgba(203, 213, 225, 0.7);
+  font-size: 1.1rem;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s, color 0.15s;
+  padding: 0;
+  line-height: 1;
+}
+.password-toggle:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.06);
+}
+.password-toggle .eye-icon {
+  display: inline-block;
+  line-height: 1;
+  user-select: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   NOTIFICATION BAR — action button
+   ══════════════════════════════════════════════════════════════════════ */
+
+.notice-action-btn {
+  flex-shrink: 0;
+  padding: 0.3rem 0.7rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.notice-action-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.notice-danger .notice-action-btn {
+  background: rgba(229, 62, 62, 0.18);
+  border-color: rgba(229, 62, 62, 0.5);
+}
+.notice-danger .notice-action-btn:hover {
+  background: rgba(229, 62, 62, 0.32);
+}
+
+body[data-mode="light"] .notice-action-btn {
+  background: rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 23, 42, 0.15);
+  color: #0f172a;
+}
+body[data-mode="light"] .notice-action-btn:hover {
+  background: rgba(15, 23, 42, 0.12);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   OVERDUE PROJECTS MODAL
+   ══════════════════════════════════════════════════════════════════════ */
+
+.overdue-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  background: rgba(229, 62, 62, 0.06);
+  border: 1px solid rgba(229, 62, 62, 0.22);
+  border-radius: 10px;
+  border-left: 4px solid var(--danger);
+}
+
+.overdue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.overdue-date-input {
+  padding: 0.4rem 0.6rem;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color-scheme: dark;
+}
+.overdue-date-input:focus {
+  outline: none;
+  border-color: var(--accent-light);
+}
+
+.overdue-extend-btn,
+.overdue-archive-btn,
+.overdue-open-btn {
+  padding: 0.4rem 0.75rem !important;
+  font-size: 0.78rem !important;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .overdue-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .overdue-actions {
+    justify-content: stretch;
+  }
+  .overdue-date-input {
+    width: 100%;
+  }
+  .overdue-extend-btn,
+  .overdue-archive-btn,
+  .overdue-open-btn {
+    flex: 1;
+  }
+}
+
+body[data-mode="light"] .overdue-row {
+  background: rgba(220, 38, 38, 0.04);
+  border-color: rgba(220, 38, 38, 0.18);
+}
+body[data-mode="light"] .overdue-date-input {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #0f172a;
+  color-scheme: light;
+}
