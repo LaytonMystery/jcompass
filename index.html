@@ -18,40 +18,32 @@
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="enhancements.css" />
 
-  <!-- Load order matters -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="utils.js"></script>
   <script src="auth.js"></script>
   <script src="auth-guard.js"></script>
 
-  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <!-- Firebase SDK (compat build) -->
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"></script>
   <script>
-  window.OneSignalDeferred = window.OneSignalDeferred || [];
-  OneSignalDeferred.push(async function(OneSignal) {
-    await OneSignal.init({
-      appId: window.JC.CONFIG.ONESIGNAL_APP_ID,
-      allowLocalhostAsSecureOrigin: true,
-      serviceWorkerPath: 'OneSignalSDKWorker.js',
-      serviceWorkerParam: { scope: '/' },
-      // Auto-prompt for permission the first time
-      autoResubscribe: true,
-      promptOptions: {
-        slidedown: {
-          enabled: true,
-          autoPrompt: true,
-          timeDelay: 3,
-          pageViews: 1,
-        }
-      },
-    });
-    console.log('[JCompass] OneSignal initialized');
-  });
-</script>
+    window.FIREBASE_CONFIG = {
+      apiKey: "AIzaSyCbTBBXuB-5GwyZt3vlraksSaZNxU4plF8",
+      authDomain: "jcompass-mobile.firebaseapp.com",
+      projectId: "jcompass-mobile",
+      storageBucket: "jcompass-mobile.firebasestorage.app",
+      messagingSenderId: "637041633042",
+      appId: "1:637041633042:web:46e9e4d641b278fca175cb",
+      measurementId: "G-W54R1CHRFC"
+    };
+    window.FCM_VAPID_KEY = "BEd1ZazthRal-S7dxn8wAa3G7zdIIdm2lrOhkFg0sCMt0E4krBX5Ms_56I_zlrAOG6RSYw5SiSjSBY1ASWwt5LY";
+  </script>
 </head>
 <body>
   <script src="dom-builder.js"></script>
   <script src="app.js"></script>
+  <script src="fcm.js"></script>
   <script src="enhancements.js"></script>
 </body>
 </html>
