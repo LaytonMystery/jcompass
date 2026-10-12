@@ -2717,8 +2717,27 @@ function initializeApp() {
     });
   });
 
-  document.getElementById('addBeatBtn')?.addEventListener('click', openDeploymentModal);
-  document.getElementById('addAssignmentBtn')?.addEventListener('click', openAssignmentModal);
+  /* ── Delegated listeners for the two assignee search bars ──────────
+     Using document-level delegation so filtering works even if the
+     modal DOM is rebuilt. Live-filter on every keystroke, plus a
+     visible search button for users who expect one. */
+  document.addEventListener('input', (e) => {
+    if (!e.target) return;
+    if (e.target.id === 'reporterSearchInput') populateReporterCheckboxes();
+    if (e.target.id === 'assigneeSearchInput') populateAssigneeCheckboxes();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || !e.target) return;
+    if (e.target.id === 'reporterSearchInput') { e.preventDefault(); populateReporterCheckboxes(); }
+    if (e.target.id === 'assigneeSearchInput') { e.preventDefault(); populateAssigneeCheckboxes(); }
+  });
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-search-trigger]');
+    if (!btn) return;
+    const which = btn.dataset.searchTrigger;
+    if (which === 'reporter') populateReporterCheckboxes();
+    if (which === 'assignee') populateAssigneeCheckboxes();
+  });
 
   const modalOpeners = [
     ['fabBtn', 'newProjectModal'],

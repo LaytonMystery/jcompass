@@ -402,7 +402,10 @@
           <label class="form-label">Instructions</label>
           <textarea class="form-input" id="beatDescription" rows="3" placeholder="What should the team do?" style="resize:vertical; font-family:var(--font-body);"></textarea>
           <label class="form-label">Select Team Member(s) <span style="color:var(--text-muted);font-weight:400;">(multi-select)</span></label>
-          <input type="text" id="reporterSearchInput" class="assignee-search" placeholder="🔍 Search members..." autocomplete="off">
+            <div class="assignee-search-wrap">
+            <input type="text" id="reporterSearchInput" class="assignee-search" placeholder="Search by name..." autocomplete="off">
+            <button type="button" class="assignee-search-btn" data-search-trigger="reporter" aria-label="Search">🔍</button>
+          </div>
           <div id="reporterCheckboxList" class="assignee-picker"></div>
         </div>
         <div class="modal-footer">
@@ -419,7 +422,10 @@
           <label class="form-label">Task Description</label>
           <input class="form-input" id="asgTitle" type="text" placeholder="What needs to be done?">
           <label class="form-label">Assign To <span style="color:var(--text-muted);font-weight:400;">(select one or more)</span></label>
-          <input type="text" id="assigneeSearchInput" class="assignee-search" placeholder="🔍 Search members..." autocomplete="off">
+          <div class="assignee-search-wrap">
+          <input type="text" id="assigneeSearchInput" class="assignee-search" placeholder="Search by name..." autocomplete="off">
+          <button type="button" class="assignee-search-btn" data-search-trigger="assignee" aria-label="Search">🔍</button>
+        </div>
           <div id="assigneeRadioList" class="assignee-picker"></div>
         </div>
         <div class="modal-footer">
