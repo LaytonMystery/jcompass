@@ -1,76 +1,121 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
  *  JCompass — Login DOM Builder
- *  · Password eye toggle uses inline styles (bypasses CSS file loading)
+ *  Split-card layout · two-logo brand lockup · light theme
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildLoginDOM() {
   const UI = `
-    <div class="login-hero">
-      <div class="login-stars"></div>
+    <div class="login-shell">
+      <div class="login-card" id="loginCard">
 
-      <nav class="login-nav">
-        <div class="login-brand">
-          <div class="login-brand-logo">
-            <img src="favicon.ico" alt="Journalist's Compass" onerror="this.replaceWith('🧭')">
+        <!-- ═══ LEFT — dark teal graphic panel ═══ -->
+        <div class="login-card-graphic">
+          <div class="brand-lockup">
+            <div class="brand-lockup-logos">
+              <div class="brand-logo">
+                <img src="logo.png" alt="JCompass"
+                  onerror="this.onerror=null;this.src='favicon.ico';this.onerror=()=>{this.parentElement.innerHTML='<span style=&quot;font-size:1.4rem;&quot;>🧭</span>';}">
+              </div>
+              <div class="brand-logo" id="brandLogo2">
+                <img src="logo2.png" alt="Organization"
+                  onerror="this.parentElement.style.display='none';">
+              </div>
+            </div>
+            <div class="brand-text">
+              <div class="brand-name">Journalist's Compass</div>
+              <div class="brand-sub">Editorial Operations Portal</div>
+            </div>
           </div>
-          <span class="login-brand-name">Journalist's Compass</span>
-        </div>
-        <div class="login-nav-right">
-          <span class="login-nav-badge">🔒 Secure Terminal</span>
-        </div>
-      </nav>
 
-      <div class="login-stage">
-        <div class="login-card" id="loginCard">
+          <div class="graphic-content">
+            <div class="graphic-eyebrow">EDITORIAL OPERATIONS</div>
+            <h2 class="graphic-heading">Every story,<br><span class="accent">on record.</span></h2>
+            <p class="graphic-tagline">From field coverage to final dispatch — coordinate reporters, monitor deadlines, and keep every project on track.</p>
+            <p class="graphic-emphasis">Built for newsrooms of every size.</p>
+          </div>
+        </div>
+
+        <!-- ═══ RIGHT — white form panel ═══ -->
+        <div class="login-card-form">
           <button class="login-card-close" id="loginCardClose" type="button" title="Clear form">✕</button>
 
-          <div class="login-card-header">
-            <h2 class="login-card-title">Login</h2>
-            <p class="login-card-subtitle">Sign in to your Newsroom desk profile</p>
+          <div class="form-header">
+            <h2 class="form-title">Welcome back!</h2>
+            <p class="form-subtitle">Sign in to continue to your newsroom desk</p>
+          </div>
+
+          <!-- Informational role chips (non-interactive) -->
+          <div class="role-chips" aria-label="Roles with access">
+            <div class="role-chip">
+              <div class="role-icon">🔑</div>
+              <div class="role-text">
+                <div class="role-name">Admin</div>
+                <div class="role-desc">System access</div>
+              </div>
+            </div>
+            <div class="role-chip">
+              <div class="role-icon">✏️</div>
+              <div class="role-text">
+                <div class="role-name">Editor</div>
+                <div class="role-desc">Editorial lead</div>
+              </div>
+            </div>
+            <div class="role-chip">
+              <div class="role-icon">📰</div>
+              <div class="role-text">
+                <div class="role-name">Staff</div>
+                <div class="role-desc">Field reporter</div>
+              </div>
+            </div>
           </div>
 
           <div class="auth-error" id="authError" style="display:none;">Invalid credentials.</div>
 
           <form id="loginForm" autocomplete="on" novalidate>
-            <div class="glass-field">
+            <div class="form-field">
               <label for="username">Username</label>
-              <input type="text" id="username" placeholder="e.g., Staff Correspondent" autocomplete="username" required>
-              <span class="glass-field-icon">👤</span>
+              <div class="input-wrap">
+                <span class="input-icon">👤</span>
+                <input type="text" id="username" placeholder="e.g., Staff Correspondent" autocomplete="username" required>
+              </div>
             </div>
 
-            <div class="glass-field" style="position:relative;">
-              <label for="password">Password</label>
-              <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required
-                     style="padding-right:3rem !important;">
-              <button type="button" id="passwordToggle" aria-label="Show password" title="Show password"
-                style="position:absolute !important;right:0 !important;bottom:0.3rem !important;width:40px !important;height:40px !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;background:transparent !important;border:none !important;color:rgba(203,213,225,0.75) !important;font-size:1.1rem !important;cursor:pointer !important;border-radius:8px !important;padding:0 !important;line-height:1 !important;z-index:5 !important;">
-                <span class="eye-icon eye-show">👁</span>
-                <span class="eye-icon eye-hide" hidden>🙈</span>
-              </button>
+            <div class="form-field">
+              <div class="label-row">
+                <label for="password">Password</label>
+                <button type="button" class="forgot-link" id="forgotBtn">Need help?</button>
+              </div>
+              <div class="input-wrap">
+                <span class="input-icon">🔒</span>
+                <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password" required>
+                <button type="button" class="password-toggle" id="passwordToggle" aria-label="Show password" title="Show password">
+                  <span class="eye-icon eye-show">👁</span>
+                  <span class="eye-icon eye-hide" hidden>🙈</span>
+                </button>
+              </div>
             </div>
 
-            <div class="glass-options">
-              <label class="glass-checkbox">
-                <input type="checkbox" id="rememberMe">
-                <span>Remember me</span>
-              </label>
-              <button type="button" class="glass-link" id="forgotBtn">Need help?</button>
-            </div>
+            <label class="remember-check">
+              <input type="checkbox" id="rememberMe">
+              <span>Remember me on this device</span>
+            </label>
 
-            <button type="submit" class="glass-submit" id="loginSubmitBtn">Login</button>
+            <button type="submit" class="login-btn" id="loginSubmitBtn">Login</button>
           </form>
 
-          <div class="glass-footer">
-            🔒 Accounts are issued and managed by Administrators.
+          <div class="form-footer">
+            <div class="footer-divider"><span>Accounts</span></div>
+            <p>🔒 Accounts are issued and managed by Administrators.</p>
           </div>
         </div>
-      </div>
 
-      <div class="login-loading-overlay" id="loginLoading">
-        <div class="spinner"></div>
-        <span>Authenticating…</span>
       </div>
+    </div>
+
+    <div class="login-loading-overlay" id="loginLoading">
+      <div class="spinner"></div>
+      <span>Authenticating…</span>
     </div>
   `;
 
