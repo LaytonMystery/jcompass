@@ -1,6 +1,7 @@
 /* ══════════════════════════════════════════════════════════════════════
    JCompass — Login page
    Dark palette · split card · two-logo lockup · teal accents
+   Desktop: split layout. Mobile: compact header + form only.
    ══════════════════════════════════════════════════════════════════════ */
 
 html, body.login-page {
@@ -87,7 +88,7 @@ html, body.login-page {
   z-index: 0;
 }
 
-/* Decorative ring — matches the Hercor look */
+/* Decorative ring */
 .login-brand::after {
   content: '';
   position: absolute;
@@ -136,7 +137,7 @@ html, body.login-page {
   -webkit-backdrop-filter: blur(6px);
 }
 
-/* Second logo gets a gold seal ring (like the Hercor crest) */
+/* Second logo gets a gold seal ring */
 .brand-logo-seal {
   background: conic-gradient(from 200deg, #f7efc0, #c4a15a, #fff8dc, #8d6b2a, #f7efc0);
   padding: 3px;
@@ -175,7 +176,7 @@ html, body.login-page {
   margin-top: 0.15rem;
 }
 
-/* ── Brand lede (kicker + heading + rule + paragraph) ──────────── */
+/* ── Brand lede ──────────────────────────────────────────────────── */
 .brand-lede {
   position: relative;
   z-index: 1;
@@ -228,7 +229,7 @@ html, body.login-page {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   RIGHT — form panel (dark)
+   RIGHT — form panel
    ══════════════════════════════════════════════════════════════════════ */
 .login-form {
   flex: 1 1 48%;
@@ -287,7 +288,7 @@ html, body.login-page {
 }
 .form-subtitle b { color: #4cb8ba; font-weight: 700; }
 
-/* ── Role chips (informational) ──────────────────────────────────── */
+/* ── Role chips ──────────────────────────────────────────────────── */
 .role-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -577,55 +578,130 @@ html, body.login-page {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ══════════════════════════════════════════════════════════════════════
-   MOBILE — stack brand panel above form
+   MOBILE BRAND HEADER (hidden on desktop)
+   ══════════════════════════════════════════════════════════════════════ */
+.mobile-brand { display: none; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   MOBILE — hide left panel, show compact brand header in form
    ══════════════════════════════════════════════════════════════════════ */
 @media (max-width: 900px) {
-  .login-shell { padding: 1.25rem 1rem; align-items: flex-start; }
+  .login-shell {
+    padding: 1.25rem 1rem;
+    align-items: flex-start;
+  }
+
   .login-card {
     flex-direction: column;
-    max-width: 560px;
+    max-width: 520px;
     min-height: auto;
     border-radius: 24px;
   }
-  .login-brand {
-    padding: 2rem 1.75rem 1.75rem;
-    border-top-right-radius: 24px;
-    border-bottom-right-radius: 120px;
-    border-bottom-left-radius: 120px;
-    gap: 1.35rem;
+
+  /* Hide the big brand panel entirely on mobile */
+  .login-brand { display: none; }
+
+  /* Hide the close button — full-screen on mobile */
+  .login-close { display: none; }
+
+  /* Form takes the whole card */
+  .login-form {
+    padding: 2rem 1.75rem 2.25rem;
+    background: transparent;
   }
-  .login-brand::after { width: 220px; }
-  .login-form { padding: 2rem 1.75rem 2.25rem; }
-  .brand-heading { font-size: 2rem; }
-  .brand-lede { margin-top: 0; margin-bottom: 0; max-width: 100%; }
+
+  /* Show the compact brand header at the top of the form */
+  .mobile-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+  }
+
+  .mobile-brand-logos {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .mobile-brand .brand-logo {
+    width: 52px;
+    height: 52px;
+  }
+
+  .mobile-brand-wordmark {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: -0.4px;
+    color: #ffffff;
+    line-height: 1.15;
+  }
+
+  .mobile-brand-tagline {
+    font-size: 0.75rem;
+    color: rgba(203, 213, 225, 0.65);
+    letter-spacing: 0.2px;
+  }
+
+  /* Role chips stay 2 columns on mobile */
+  .role-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.5rem;
+  }
+  .role-chip { padding: 0.55rem 0.65rem; }
+  .role-icon { width: 28px; height: 28px; }
+  .role-name { font-size: 0.78rem; }
+  .role-desc { font-size: 0.65rem; }
 }
 
 @media (max-width: 560px) {
   .login-shell { padding: 0; }
+
   .login-card {
     width: 100%;
+    max-width: 100%;
     border-radius: 0;
     border: none;
     box-shadow: none;
+    min-height: 100vh;
+    min-height: 100dvh;
   }
-  .login-brand {
-    border-top-left-radius: 0;
-    border-bottom-right-radius: 80px;
-    border-bottom-left-radius: 80px;
-    padding: 1.5rem 1.25rem 1.35rem;
+
+  .login-form {
+    padding: 2rem 1.25rem 2.5rem;
+    min-height: 100vh;
+    min-height: 100dvh;
+    justify-content: center;
   }
-  .login-form { padding: 1.75rem 1.25rem 2rem; }
-  .brand-logo { width: 46px; height: 46px; }
-  .brand-wordmark { font-size: 1rem; }
-  .brand-tagline { font-size: 0.7rem; }
-  .brand-heading { font-size: 1.65rem; }
-  .brand-paragraph { font-size: 0.88rem; }
-  .form-title { font-size: 1.6rem; }
-  .form-subtitle { font-size: 0.85rem; }
-  .role-grid { grid-template-columns: 1fr; }
+
+  .mobile-brand .brand-logo { width: 46px; height: 46px; }
+  .mobile-brand-wordmark { font-size: 1rem; }
+  .mobile-brand-tagline { font-size: 0.68rem; }
+
+  .form-title { font-size: 1.55rem; }
+  .form-subtitle { font-size: 0.85rem; margin-bottom: 1.25rem; }
+
+  .form-field { margin-bottom: 0.95rem; }
+  .input-wrap input { min-height: 46px; font-size: 1rem; }
+
+  .remember-check { font-size: 0.82rem; margin-bottom: 1.1rem; }
+  .login-btn { min-height: 46px; font-size: 0.88rem; }
 }
 
-/* ── Belt-and-suspenders: keep login dark even if data-mode="light" ── */
+@media (max-width: 380px) {
+  .form-title { font-size: 1.4rem; }
+  .mobile-brand .brand-logo { width: 42px; height: 42px; }
+  .role-chip { padding: 0.5rem; gap: 0.45rem; }
+  .role-name { font-size: 0.72rem; }
+  .role-desc { font-size: 0.6rem; }
+}
+
+/* ── Keep login dark even if data-mode="light" ──────────────────── */
 body.login-page,
 body[data-mode="dark"].login-page,
 body[data-mode="light"].login-page {

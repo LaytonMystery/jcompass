@@ -1,7 +1,8 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
  *  JCompass — Login DOM Builder
- *  Split card · two-logo lockup · dark teal palette
+ *  Split card · two-logo lockup · dark palette
+ *  Mobile: hides brand panel, shows compact brand header in form
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildLoginDOM() {
@@ -9,7 +10,7 @@
     <div class="login-shell">
       <div class="login-card" id="loginCard">
 
-        <!-- ═══ LEFT — dark teal graphic panel ═══ -->
+        <!-- ═══ LEFT — dark teal graphic panel (desktop only) ═══ -->
         <aside class="login-brand">
           <div class="login-brand-overlay"></div>
 
@@ -41,11 +42,28 @@
           </div>
         </aside>
 
-        <!-- ═══ RIGHT — dark form panel ═══ -->
+        <!-- ═══ RIGHT — form panel ═══ -->
         <main class="login-form">
           <button class="login-close" id="loginCardClose" type="button" title="Clear form">✕</button>
 
           <div class="form-inner">
+
+            <!-- Mobile-only compact brand header -->
+            <div class="mobile-brand" aria-hidden="true">
+              <div class="mobile-brand-logos">
+                <div class="brand-logo brand-logo-main">
+                  <img src="logo.png" alt="JCompass"
+                    onerror="this.onerror=null;this.src='favicon.ico';this.onerror=()=>{this.parentElement.innerHTML='<span style=&quot;font-size:1.4rem;&quot;>🧭</span>';}">
+                </div>
+                <div class="brand-logo brand-logo-seal">
+                  <img src="logo2.png" alt="Organization"
+                    onerror="this.parentElement.style.display='none';">
+                </div>
+              </div>
+              <div class="mobile-brand-wordmark">Journalist's Compass</div>
+              <div class="mobile-brand-tagline">Editorial Operations Portal</div>
+            </div>
+
             <h2 class="form-title">Welcome back!</h2>
             <p class="form-subtitle">Sign in to continue to your <b id="portalName">newsroom desk</b></p>
 
