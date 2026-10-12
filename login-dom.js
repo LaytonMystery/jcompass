@@ -1,8 +1,7 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
  *  JCompass — Login DOM Builder
- *  · Password field wrapped for inline eye toggle
- *  · Updated "Need help" message
+ *  · Password eye toggle uses inline styles (bypasses CSS file loading)
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildLoginDOM() {
@@ -40,15 +39,15 @@
               <span class="glass-field-icon">👤</span>
             </div>
 
-            <div class="glass-field">
+            <div class="glass-field" style="position:relative;">
               <label for="password">Password</label>
-              <div class="password-input-wrap">
-                <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
-                <button type="button" class="password-toggle" id="passwordToggle" aria-label="Show password" title="Show password">
-                  <span class="eye-icon eye-show">👁</span>
-                  <span class="eye-icon eye-hide" hidden>🙈</span>
-                </button>
-              </div>
+              <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required
+                     style="padding-right:3rem !important;">
+              <button type="button" id="passwordToggle" aria-label="Show password" title="Show password"
+                style="position:absolute !important;right:0 !important;bottom:0.3rem !important;width:40px !important;height:40px !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;background:transparent !important;border:none !important;color:rgba(203,213,225,0.75) !important;font-size:1.1rem !important;cursor:pointer !important;border-radius:8px !important;padding:0 !important;line-height:1 !important;z-index:5 !important;">
+                <span class="eye-icon eye-show">👁</span>
+                <span class="eye-icon eye-hide" hidden>🙈</span>
+              </button>
             </div>
 
             <div class="glass-options">
