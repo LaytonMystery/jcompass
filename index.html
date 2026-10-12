@@ -27,17 +27,27 @@
 
   <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
   <script>
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    OneSignalDeferred.push(async function (OneSignal) {
-      await OneSignal.init({
-        appId: window.JC.CONFIG.ONESIGNAL_APP_ID,
-        notifyButton: { enable: false },
-        allowLocalhostAsSecureOrigin: true,
-        serviceWorkerPath: 'OneSignalSDKWorker.js',
-        serviceWorkerParam: { scope: '/' }
-      });
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function(OneSignal) {
+    await OneSignal.init({
+      appId: window.JC.CONFIG.ONESIGNAL_APP_ID,
+      allowLocalhostAsSecureOrigin: true,
+      serviceWorkerPath: 'OneSignalSDKWorker.js',
+      serviceWorkerParam: { scope: '/' },
+      // Auto-prompt for permission the first time
+      autoResubscribe: true,
+      promptOptions: {
+        slidedown: {
+          enabled: true,
+          autoPrompt: true,
+          timeDelay: 3,
+          pageViews: 1,
+        }
+      },
     });
-  </script>
+    console.log('[JCompass] OneSignal initialized');
+  });
+</script>
 </head>
 <body>
   <script src="dom-builder.js"></script>

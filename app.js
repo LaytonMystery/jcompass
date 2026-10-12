@@ -2693,10 +2693,24 @@ async function sendPushNotification(title, message, targetUserName = null) {
 }
 
 async function setOneSignalUser(userName) {
+  if (!userName) return;
   window.OneSignalDeferred = window.OneSignalDeferred || [];
-  OneSignalDeferred.push(async (OneSignal) => {
-    try { await OneSignal.login(userName); } catch {}
-  });
+
+  const attempt = (retriesLeft) => {
+    OneSignalDeferred.push(async (OneSignal) => {
+      try {
+        await OneSignal.login(userName);
+        console.log('[JCompass] OneSignal user tagged:', userName);
+
+        // Also opt in to push explicitly (some browsers need this after login)
+        try { await OneSignal.User.PushSubscription.optIn(); } catch {}
+      } catch (e) {
+        console.warn('[JCompass] OneSignal.login failed, retrying…', e);
+        if (retriesLeft > 0) setTimeout(() => attempt(retriesLeft - 1), 1500);
+      }
+    });
+  };
+  attempt(3);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
