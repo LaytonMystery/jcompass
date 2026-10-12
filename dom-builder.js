@@ -1,9 +1,9 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Dashboard DOM Builder v6.7
+ *  JCompass — Dashboard DOM Builder v6.8
  *  · Multi-assignee tasks
  *  · Search bars in both pickers
- *  · Clean picker containers (styled via .assignee-picker)
+ *  · Fixed-height pickers (flex-shrink:0 so they don't collapse)
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
@@ -402,12 +402,11 @@
           <label class="form-label">Instructions</label>
           <textarea class="form-input" id="beatDescription" rows="3" placeholder="What should the team do?" style="resize:vertical; font-family:var(--font-body);"></textarea>
           <label class="form-label">Select Team Member(s) <span style="color:var(--text-muted);font-weight:400;">(multi-select)</span></label>
-            <div class="assignee-search-wrap">
+          <div class="assignee-search-wrap">
             <input type="text" id="reporterSearchInput" class="assignee-search" placeholder="Search by name..." autocomplete="off">
             <button type="button" class="assignee-search-btn" data-search-trigger="reporter" aria-label="Search">🔍</button>
           </div>
-          <div id="reporterCheckboxList" class="assignee-picker"
-     style="height:340px !important; max-height:340px !important; min-height:340px !important; overflow-y:auto !important; display:grid !important; grid-template-columns:repeat(2, minmax(0,1fr)) !important; gap:0.35rem !important; align-content:start !important; background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:10px; padding:0.6rem;"></div>
+          <div id="reporterCheckboxList" class="assignee-picker" style="flex-shrink:0!important;flex-grow:0!important;height:340px!important;max-height:340px!important;min-height:340px!important;overflow-y:auto!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:0.35rem!important;align-content:start!important;background:rgba(0,0,0,0.2);border:1px solid var(--border-color);border-radius:10px;padding:0.6rem;"></div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" data-close="addBeatModal" type="button">Cancel</button>
@@ -424,11 +423,10 @@
           <input class="form-input" id="asgTitle" type="text" placeholder="What needs to be done?">
           <label class="form-label">Assign To <span style="color:var(--text-muted);font-weight:400;">(select one or more)</span></label>
           <div class="assignee-search-wrap">
-          <input type="text" id="assigneeSearchInput" class="assignee-search" placeholder="Search by name..." autocomplete="off">
-          <button type="button" class="assignee-search-btn" data-search-trigger="assignee" aria-label="Search">🔍</button>
-        </div>
-          <div id="assigneeRadioList" class="assignee-picker"
-     style="height:340px !important; max-height:340px !important; min-height:340px !important; overflow-y:auto !important; display:grid !important; grid-template-columns:repeat(2, minmax(0,1fr)) !important; gap:0.35rem !important; align-content:start !important; background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:10px; padding:0.6rem;"></div>
+            <input type="text" id="assigneeSearchInput" class="assignee-search" placeholder="Search by name..." autocomplete="off">
+            <button type="button" class="assignee-search-btn" data-search-trigger="assignee" aria-label="Search">🔍</button>
+          </div>
+          <div id="assigneeRadioList" class="assignee-picker" style="flex-shrink:0!important;flex-grow:0!important;height:340px!important;max-height:340px!important;min-height:340px!important;overflow-y:auto!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:0.35rem!important;align-content:start!important;background:rgba(0,0,0,0.2);border:1px solid var(--border-color);border-radius:10px;padding:0.6rem;"></div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" data-close="addAssignmentModal" type="button">Cancel</button>

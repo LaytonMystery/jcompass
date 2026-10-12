@@ -718,3 +718,19 @@ body[data-mode="light"].login-page {
     min-height: 300px !important;
   }
 }
+/* Prevent the modal flex column from squeezing the picker */
+#addBeatModal .modal-body .assignee-picker,
+#addAssignmentModal .modal-body .assignee-picker,
+#reporterCheckboxList,
+#assigneeRadioList {
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  flex-basis: auto !important;
+}
+
+/* Let the modal itself scroll instead of squishing children */
+#addBeatModal .modal-body,
+#addAssignmentModal .modal-body {
+  overflow-y: auto !important;
+  max-height: calc(90vh - 180px) !important;
+}
