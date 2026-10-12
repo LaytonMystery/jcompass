@@ -1,7 +1,8 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Login DOM Builder (glass hero layout)
- *  Loaded before login.js. Builds a full-screen hero with a glass card.
+ *  JCompass — Login DOM Builder
+ *  · Password field wrapped for inline eye toggle
+ *  · Updated "Need help" message
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildLoginDOM() {
@@ -41,8 +42,13 @@
 
             <div class="glass-field">
               <label for="password">Password</label>
-              <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
-              <span class="glass-field-icon">🔒</span>
+              <div class="password-input-wrap">
+                <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" required>
+                <button type="button" class="password-toggle" id="passwordToggle" aria-label="Show password" title="Show password">
+                  <span class="eye-icon eye-show">👁</span>
+                  <span class="eye-icon eye-hide" hidden>🙈</span>
+                </button>
+              </div>
             </div>
 
             <div class="glass-options">
@@ -70,32 +76,4 @@
   `;
 
   document.body.insertAdjacentHTML('afterbegin', UI);
-
-  /* ── Small UI-only wiring (login.js handles the real auth) ──── */
-
-  // X button clears the form and refocuses username
-  const closeBtn = document.getElementById('loginCardClose');
-  if (closeBtn) {
-    closeBtn.addEventListener('click', () => {
-      const u = document.getElementById('username');
-      const p = document.getElementById('password');
-      const err = document.getElementById('authError');
-      if (u) u.value = '';
-      if (p) p.value = '';
-      if (err) err.style.display = 'none';
-      if (u) u.focus();
-    });
-  }
-
-  // "Need help?" shows a friendly toast
-  const forgotBtn = document.getElementById('forgotBtn');
-  if (forgotBtn) {
-    forgotBtn.addEventListener('click', () => {
-      const t = document.getElementById('toast');
-      if (!t) return;
-      t.innerText = 'Contact your Administrator for account help.';
-      t.classList.add('active');
-      setTimeout(() => t.classList.remove('active'), 3000);
-    });
-  }
 })();
