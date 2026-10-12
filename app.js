@@ -1821,7 +1821,9 @@ function renderAttendanceTable() {
   const tbody = document.getElementById('attendanceTableBody');
   const emptyRow = document.getElementById('attendanceEmptyRow');
   if (!tbody) return;
+
   Array.from(tbody.querySelectorAll('tr:not(#attendanceEmptyRow)')).forEach(r => r.remove());
+
   const q = attendanceSearchQuery.toLowerCase();
   const subset = attendanceLogs.filter(log =>
     (log.reporter || '').toLowerCase().includes(q) ||
@@ -1829,25 +1831,81 @@ function renderAttendanceTable() {
     (log.location && log.location.toLowerCase().includes(q)) ||
     (log.task_ref && log.task_ref.toLowerCase().includes(q))
   );
-  if (subset.length === 0) { if (emptyRow) emptyRow.style.display = ''; return; }
+
+  if (subset.length === 0) {
+    if (emptyRow) emptyRow.style.display = '';
+    return;
+  }
   if (emptyRow) emptyRow.style.display = 'none';
 
-  subset.slice(0, 100).forEach((log, idx) => {
-    const tr = document.createElement('tr');
-    tr.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
-    tr.innerHTML =
-      '<td style="padding:0.75rem 1.25rem;">' + (idx + 1) + '</td>' +
-      '<td style="padding:0.75rem 1rem;font-weight:600;">' + esc(log.reporter) + '</td>' +
-      '<td style="padding:0.75rem 1rem;">' + esc(log.date) + '</td>' +
-      '<td style="padding:0.75rem 1rem;color:#9ae6b4;">' + esc(log.time) + '</td>' +
-      '<td style="padding:0.75rem 1rem;color:' + (log.check_out_time ? '#fc8181' : 'var(--text-muted)') + ';">' + esc(log.check_out_time || '—') + '</td>' +
-      '<td style="padding:0.75rem 1rem;font-size:0.75rem;">' + esc((log.lat || '—') + ', ' + (log.lon || '—')) + '</td>' +
-      '<td style="padding:0.75rem 1rem;">' + esc(log.location || '—') + '</td>' +
-      '<td style="padding:0.75rem 1rem;font-size:0.78rem;">' + (log.task_ref ? '📡 ' + esc(log.task_ref) : '—') + '</td>' +
-      '<td style="padding:0.75rem 1rem;">' + esc(log.note || '—') + '</td>' +
-      '<td style="padding:0.75rem 1rem;">' + esc(log.role) + '</td>' +
-      '<td style="padding:0.75rem 1rem;"><button class="card-action-btn" data-map-idx="' + idx + '" style="padding:0.25rem 0.5rem; font-size:0.85rem;" type="button">🗺️</button></td>';
-    tbody.appendChild(tr);
+  const groups = new Map();
+  subset.slice(0, 200).forEach(log => {
+    const key = log.date || 'unknown';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(log);
+  });
+
+  const sortedDates = Array.from(groups.keys()).sort((a, b) => {
+    if (a === 'unknown') return 1;
+    if (b === 'unknown') return -1;
+    return b.localeCompare(a);
+  });
+
+  const todayIso = Utils.todayLocalISO();
+  const yesterdayIso = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  })();
+
+  let globalIdx = 0;
+  sortedDates.forEach(dateKey => {
+    const rows = groups.get(dateKey);
+
+    const separator = document.createElement('tr');
+    separator.className = 'attendance-day-separator';
+    let dayLabel;
+    if (dateKey === todayIso) dayLabel = '📅 Today';
+    else if (dateKey === yesterdayIso) dayLabel = '📅 Yesterday';
+    else if (dateKey === 'unknown') dayLabel = '📅 Unknown date';
+    else {
+      const d = new Date(dateKey + 'T00:00:00');
+      dayLabel = '📅 ' + d.toLocaleDateString('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+      });
+    }
+    const totalCheckins = rows.length;
+    const stillOpen = rows.filter(r => !r.check_out_time).length;
+    const openTag = stillOpen > 0
+      ? ' · <span style="color:#9ae6b4;">' + stillOpen + ' open</span>'
+      : '';
+
+    separator.innerHTML =
+      '<td colspan="11" class="attendance-day-separator-cell">' +
+        '<span class="attendance-day-label">' + esc(dayLabel) + '</span>' +
+        '<span class="attendance-day-count">' + totalCheckins + ' record' + (totalCheckins === 1 ? '' : 's') + openTag + '</span>' +
+      '</td>';
+    tbody.appendChild(separator);
+
+    rows.forEach(log => {
+      globalIdx++;
+      const tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
+      tr.innerHTML =
+        '<td style="padding:0.75rem 1.25rem;">' + globalIdx + '</td>' +
+        '<td style="padding:0.75rem 1rem;font-weight:600;">' + esc(log.reporter) + '</td>' +
+        '<td style="padding:0.75rem 1rem;">' + esc(log.date) + '</td>' +
+        '<td style="padding:0.75rem 1rem;color:#9ae6b4;">' + esc(log.time) + '</td>' +
+        '<td style="padding:0.75rem 1rem;color:' + (log.check_out_time ? '#fc8181' : 'var(--text-muted)') + ';">' + esc(log.check_out_time || '—') + '</td>' +
+        '<td style="padding:0.75rem 1rem;font-size:0.75rem;">' + esc((log.lat || '—') + ', ' + (log.lon || '—')) + '</td>' +
+        '<td style="padding:0.75rem 1rem;">' + esc(log.location || '—') + '</td>' +
+        '<td style="padding:0.75rem 1rem;font-size:0.78rem;">' + (log.task_ref ? '📡 ' + esc(log.task_ref) : '—') + '</td>' +
+        '<td style="padding:0.75rem 1rem;">' + esc(log.note || '—') + '</td>' +
+        '<td style="padding:0.75rem 1rem;">' + esc(log.role) + '</td>' +
+        '<td style="padding:0.75rem 1rem;"><button class="card-action-btn" data-map-idx="' + subset.indexOf(log) + '" style="padding:0.25rem 0.5rem; font-size:0.85rem;" type="button">🗺️</button></td>';
+      tbody.appendChild(tr);
+    });
   });
 
   tbody.querySelectorAll('[data-map-idx]').forEach(btn => {
@@ -2437,13 +2495,13 @@ async function refreshUsersFromBackend() {
 /* ═══════════════════════════════════════════════════════════════════════
    SECTION 23: ACTIVITY LOG VIEW
    ═══════════════════════════════════════════════════════════════════════ */
-
 function renderAuditLogTable() {
   const tbody = document.getElementById('auditLogTableBody');
   const badge = document.getElementById('auditCountBadge');
   if (!tbody) return;
   tbody.innerHTML = '';
   if (badge) badge.innerText = auditLog.length + ' entries';
+
   const q = auditSearchQuery.toLowerCase();
   const subset = auditLog.filter(e =>
     (e.actor || '').toLowerCase().includes(q) ||
@@ -2451,31 +2509,91 @@ function renderAuditLogTable() {
     (e.target_name || '').toLowerCase().includes(q) ||
     (e.details || '').toLowerCase().includes(q)
   );
+
   if (subset.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5" style="padding:3rem;text-align:center;color:var(--text-muted);">No activity entries.</td></tr>';
     return;
   }
+
+  // ── Group by day (using created_at timestamp) ────────────────────
+  const groups = new Map();
   subset.slice(0, 200).forEach(e => {
-    const tr = document.createElement('tr');
-    tr.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
-    const actionColors = {
-      delete: '#fc8181', archive: '#fbd38d', create: '#9ae6b4',
-      submit: '#90cdf4', approve: '#81e6d9', update: '#cbd5e1',
-      notify: '#a78bfa', ping: '#a78bfa', clear: '#f43f5e', deny: '#f43f5e',
-      reject: '#f43f5e', request: '#fbd38d', restore: '#9ae6b4',
-      extend: '#fbd38d'
-    };
-    const key = Object.keys(actionColors).find(k => (e.action || '').toLowerCase().includes(k));
-    const color = actionColors[key] || '#cbd5e1';
-    tr.innerHTML =
-      '<td style="padding:0.75rem 1.25rem;font-size:0.78rem;color:var(--text-muted);white-space:nowrap;">' +
-        esc(e.created_at ? new Date(e.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—') +
-      '</td>' +
-      '<td style="padding:0.75rem 1rem;font-weight:600;">' + esc(e.actor || '—') + '</td>' +
-      '<td style="padding:0.75rem 1rem;font-weight:700;color:' + color + ';font-size:0.75rem;text-transform:uppercase;letter-spacing:0.5px;">' + esc((e.action || '').replace(/_/g, ' ')) + '</td>' +
-      '<td style="padding:0.75rem 1rem;font-size:0.82rem;">' + (e.target_type ? '<span style="color:var(--text-muted);">' + esc(e.target_type) + ':</span> ' : '') + esc(e.target_name || '—') + '</td>' +
-      '<td style="padding:0.75rem 1rem;font-size:0.78rem;color:var(--text-muted);">' + esc(e.details || '—') + '</td>';
-    tbody.appendChild(tr);
+    let dayKey = 'unknown';
+    if (e.created_at) {
+      try {
+        const d = new Date(e.created_at);
+        const p = n => String(n).padStart(2, '0');
+        dayKey = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      } catch {}
+    }
+    if (!groups.has(dayKey)) groups.set(dayKey, []);
+    groups.get(dayKey).push(e);
+  });
+
+  const sortedDates = Array.from(groups.keys()).sort((a, b) => {
+    if (a === 'unknown') return 1;
+    if (b === 'unknown') return -1;
+    return b.localeCompare(a);
+  });
+
+  const todayIso = Utils.todayLocalISO();
+  const yesterdayIso = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  })();
+
+  const actionColors = {
+    delete: '#fc8181', archive: '#fbd38d', create: '#9ae6b4',
+    submit: '#90cdf4', approve: '#81e6d9', update: '#cbd5e1',
+    notify: '#a78bfa', ping: '#a78bfa', clear: '#f43f5e', deny: '#f43f5e',
+    reject: '#f43f5e', request: '#fbd38d', restore: '#9ae6b4',
+    extend: '#fbd38d'
+  };
+
+  sortedDates.forEach(dateKey => {
+    const rows = groups.get(dateKey);
+
+    // Separator
+    const separator = document.createElement('tr');
+    separator.className = 'activity-day-separator';
+    let dayLabel;
+    if (dateKey === todayIso) dayLabel = '📅 Today';
+    else if (dateKey === yesterdayIso) dayLabel = '📅 Yesterday';
+    else if (dateKey === 'unknown') dayLabel = '📅 Unknown date';
+    else {
+      const d = new Date(dateKey + 'T00:00:00');
+      dayLabel = '📅 ' + d.toLocaleDateString('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+      });
+    }
+    const total = rows.length;
+    separator.innerHTML =
+      '<td colspan="5" class="activity-day-separator-cell">' +
+        '<span class="activity-day-label">' + esc(dayLabel) + '</span>' +
+        '<span class="activity-day-count">' + total + ' event' + (total === 1 ? '' : 's') + '</span>' +
+      '</td>';
+    tbody.appendChild(separator);
+
+    // Entries
+    rows.forEach(e => {
+      const tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
+      const key = Object.keys(actionColors).find(k => (e.action || '').toLowerCase().includes(k));
+      const color = actionColors[key] || '#cbd5e1';
+      tr.innerHTML =
+        '<td style="padding:0.75rem 1.25rem;font-size:0.78rem;color:var(--text-muted);white-space:nowrap;">' +
+          esc(e.created_at ? new Date(e.created_at).toLocaleString('en-US', {
+            hour: '2-digit', minute: '2-digit'
+          }) : '—') +
+        '</td>' +
+        '<td style="padding:0.75rem 1rem;font-weight:600;">' + esc(e.actor || '—') + '</td>' +
+        '<td style="padding:0.75rem 1rem;font-weight:700;color:' + color + ';font-size:0.75rem;text-transform:uppercase;letter-spacing:0.5px;">' + esc((e.action || '').replace(/_/g, ' ')) + '</td>' +
+        '<td style="padding:0.75rem 1rem;font-size:0.82rem;">' + (e.target_type ? '<span style="color:var(--text-muted);">' + esc(e.target_type) + ':</span> ' : '') + esc(e.target_name || '—') + '</td>' +
+        '<td style="padding:0.75rem 1rem;font-size:0.78rem;color:var(--text-muted);">' + esc(e.details || '—') + '</td>';
+      tbody.appendChild(tr);
+    });
   });
 }
 
