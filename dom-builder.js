@@ -406,7 +406,8 @@
             <input type="text" id="reporterSearchInput" class="assignee-search" placeholder="Search by name..." autocomplete="off">
             <button type="button" class="assignee-search-btn" data-search-trigger="reporter" aria-label="Search">🔍</button>
           </div>
-          <div id="reporterCheckboxList" class="assignee-picker"></div>
+          <div id="reporterCheckboxList" class="assignee-picker"
+     style="height:340px !important; max-height:340px !important; min-height:340px !important; overflow-y:auto !important; display:grid !important; grid-template-columns:repeat(2, minmax(0,1fr)) !important; gap:0.35rem !important; align-content:start !important; background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:10px; padding:0.6rem;"></div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" data-close="addBeatModal" type="button">Cancel</button>
@@ -426,7 +427,8 @@
           <input type="text" id="assigneeSearchInput" class="assignee-search" placeholder="Search by name..." autocomplete="off">
           <button type="button" class="assignee-search-btn" data-search-trigger="assignee" aria-label="Search">🔍</button>
         </div>
-          <div id="assigneeRadioList" class="assignee-picker"></div>
+          <div id="assigneeRadioList" class="assignee-picker"
+     style="height:340px !important; max-height:340px !important; min-height:340px !important; overflow-y:auto !important; display:grid !important; grid-template-columns:repeat(2, minmax(0,1fr)) !important; gap:0.35rem !important; align-content:start !important; background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:10px; padding:0.6rem;"></div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" data-close="addAssignmentModal" type="button">Cancel</button>

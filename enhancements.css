@@ -710,3 +710,11 @@ body[data-mode="light"] .stats-grid.cabinet-stats .stat-card:hover { background:
 body[data-mode="light"].login-page {
   background: radial-gradient(circle at 30% 20%, #1a2236 0%, #0d1017 100%) !important;
 }
+@media (max-width: 640px) {
+  #reporterCheckboxList, #assigneeRadioList {
+    grid-template-columns: 1fr !important;
+    height: 300px !important;
+    max-height: 300px !important;
+    min-height: 300px !important;
+  }
+}
