@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════════════════════════
-   Sentinel JCompass add-on — v6.6
+   Sentinel JCompass add-on — v6.7
    Load AFTER app.js.
    ══════════════════════════════════════════════════════════════════════ */
 
@@ -302,8 +302,14 @@
   }
 
   /* ══════════════════════════════════════════════════════════════
-     Layout: topbar (bell + profile), tray account name, sidebar tidy
+     Layout: topbar (bell + profile pill), tray account name, sidebar tidy
      ══════════════════════════════════════════════════════════════ */
+  function openTray() {
+    $('controlTray')?.classList.add('active');
+    $('controlTrayOverlay')?.classList.add('active');
+    setTimeout(initBrightness, 50);
+  }
+
   function buildLayout() {
     const sidebar = $('sidebar');
     const topRight = document.querySelector('.topbar-right');
@@ -351,20 +357,24 @@
       }
       updateBellUI();
 
-      /* Profile pill */
-      if (!$('topbarProfileBtn')) {
-        const btn = Utils.el('button', {
+      /* Profile pill — opens the workspace control tray */
+      let prof = $('topbarProfileBtn');
+      if (!prof) {
+        prof = Utils.el('button', {
           type: 'button', class: 'topbar-menu-btn', id: 'topbarProfileBtn',
-          title: 'Open workspace settings'
+          title: 'Open workspace controls'
         });
-        btn.appendChild(Utils.el('div', { class: 'topbar-avatar', id: 'topbarAvatar' }, 'JC'));
-        btn.appendChild(Utils.el('span', { class: 'topbar-name', id: 'topbarName' }, 'Loading…'));
-        btn.onclick = () => $('settingsSidebarBtn')?.click();
-        topRight.appendChild(btn);
+        prof.appendChild(Utils.el('div', { class: 'topbar-avatar', id: 'topbarAvatar' }, 'JC'));
+        prof.appendChild(Utils.el('span', { class: 'topbar-name', id: 'topbarName' }, 'Loading…'));
+        topRight.appendChild(prof);
+      }
+      if (!prof.dataset.boundProfile) {
+        prof.dataset.boundProfile = '1';
+        prof.onclick = openTray;
       }
     }
 
-    /* Hide original user chip */
+    /* Hide the legacy user chip */
     $('userAvatarBtn')?.classList.add('chip-hidden');
 
     /* Remove legacy sidebar bell + tray hamburger if present */
@@ -474,7 +484,7 @@
   }
 
   document.addEventListener('click', e => {
-    if (e.target.closest('.settings-sidebar-btn, #settingsGearBtn, #userAvatarBtn, #topbarProfileBtn, #trayWorkspaceBtn')) {
+    if (e.target.closest('#topbarProfileBtn, #trayWorkspaceBtn')) {
       setTimeout(initBrightness, 50);
     }
   }, true);
