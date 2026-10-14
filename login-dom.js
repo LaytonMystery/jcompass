@@ -1,6 +1,6 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Login DOM Builder
+ *  Sentinel JCompass — Login DOM Builder
  *  Split card · two-logo lockup · dark palette
  *  Mobile: hides brand panel, shows compact brand header in form
  * ══════════════════════════════════════════════════════════════════════
@@ -10,7 +10,6 @@
     <div class="login-shell">
       <div class="login-card" id="loginCard">
 
-        <!-- ═══ LEFT — dark teal graphic panel (desktop only) ═══ -->
         <aside class="login-brand">
           <div class="login-brand-overlay"></div>
 
@@ -26,7 +25,7 @@
               </div>
             </div>
             <div class="brand-text">
-              <div class="brand-wordmark">Journalist's Compass</div>
+              <div class="brand-wordmark">Sentinel Journalist Compass</div>
               <div class="brand-tagline">Editorial Operations Portal</div>
             </div>
           </div>
@@ -42,13 +41,11 @@
           </div>
         </aside>
 
-        <!-- ═══ RIGHT — form panel ═══ -->
         <main class="login-form">
           <button class="login-close" id="loginCardClose" type="button" title="Clear form">✕</button>
 
           <div class="form-inner">
 
-            <!-- Mobile-only compact brand header -->
             <div class="mobile-brand" aria-hidden="true">
               <div class="mobile-brand-logos">
                 <div class="brand-logo brand-logo-main">
@@ -60,43 +57,12 @@
                     onerror="this.parentElement.style.display='none';">
                 </div>
               </div>
-              <div class="mobile-brand-wordmark">Journalist's Compass</div>
+              <div class="mobile-brand-wordmark">Sentinel Journalist Compass</div>
               <div class="mobile-brand-tagline">Editorial Operations Portal</div>
             </div>
 
             <h2 class="form-title">Welcome back!</h2>
             <p class="form-subtitle">Sign in to continue to your <b id="portalName">newsroom desk</b></p>
-
-            <!-- Role chips (informational) -->
-            <div class="role-grid" aria-hidden="true">
-              <div class="role-chip">
-                <div class="role-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                </div>
-                <div class="role-text">
-                  <div class="role-name">Admin</div>
-                  <div class="role-desc">System access</div>
-                </div>
-              </div>
-              <div class="role-chip">
-                <div class="role-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                </div>
-                <div class="role-text">
-                  <div class="role-name">Editor</div>
-                  <div class="role-desc">Editorial lead</div>
-                </div>
-              </div>
-              <div class="role-chip">
-                <div class="role-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8M15 18h-5M10 6h8v4h-8V6z"/></svg>
-                </div>
-                <div class="role-text">
-                  <div class="role-name">Staff</div>
-                  <div class="role-desc">Field reporter</div>
-                </div>
-              </div>
-            </div>
 
             <div class="auth-error" id="authError" style="display:none;">Invalid credentials.</div>
 

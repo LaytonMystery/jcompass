@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════════════════════════
-   JCompass add-on — v6.3
+   Sentinel JCompass add-on — v6.5
    Load AFTER app.js.
    ══════════════════════════════════════════════════════════════════════ */
 
@@ -51,19 +51,6 @@
     };
   }
 
-  /* ── Announcements auto-scroll ───────────────────────────────── */
-  let paused = false, waiting = false;
-  function tickScroll() {
-    const c = $('announcementsStreamContainer');
-    if (c && !paused && !waiting && c.scrollHeight > c.clientHeight + 2) {
-      if (c.scrollTop + c.clientHeight >= c.scrollHeight - 1) {
-        waiting = true;
-        setTimeout(() => { c.scrollTop = 0; setTimeout(() => { waiting = false; }, 500); }, 500);
-      } else c.scrollTop += 0.6;
-    }
-    requestAnimationFrame(tickScroll);
-  }
-
   /* ── Cabinet stats ───────────────────────────────────────────── */
   function buildCabinetStats() {
     const grid = document.querySelector('.stats-grid');
@@ -77,7 +64,8 @@
       statStaffCount:     'users',
       statTodayCheckins:  'attend'
     };
-    const isStaff = (window.JC.Session.user()?.role || 'STAFF') !== 'ADMIN';
+    const role = window.JC.Session.user()?.role || 'STAFF';
+    const isStaff = role !== 'ADMIN' && role !== 'EDITOR';
 
     grid.querySelectorAll('.stat-card').forEach(card => {
       const valEl = card.querySelector('.stat-value');
@@ -111,6 +99,7 @@
   /* ── Brightness toggle ───────────────────────────────────────── */
   function initBrightness() {
     const setMode = m => {
+      if (!m) return;
       document.body.setAttribute('data-mode', m);
       try { localStorage.setItem('jcompass_mode', m); } catch {}
       document.querySelectorAll('.mode-chip-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
@@ -126,54 +115,138 @@
   }
 
   /* ══════════════════════════════════════════════════════════════
-     Bell — enable / disable notifications
+     Notification center (bell)
      ══════════════════════════════════════════════════════════════ */
+  const NOTIF_READ_KEY = 'jcompass_read_notifs';
+
+  function getReadNotifIds() {
+    try {
+      const v = JSON.parse(localStorage.getItem(NOTIF_READ_KEY) || '[]');
+      return Array.isArray(v) ? v : [];
+    } catch { return []; }
+  }
+  function setReadNotifIds(ids) {
+    try { localStorage.setItem(NOTIF_READ_KEY, JSON.stringify([...new Set(ids)])); } catch {}
+  }
+
+  function getMyPings() {
+    const user = window.JC.Session.user();
+    if (!user) return [];
+    const anns = (window.JC.getAnnouncements && window.JC.getAnnouncements()) || [];
+    return anns.filter(a =>
+      a.sender !== user.name && (a.target === 'ALL' || a.target === user.name)
+    );
+  }
+
+  function getUnreadNotifCount() {
+    const readIds = new Set(getReadNotifIds());
+    return getMyPings().filter(a => !readIds.has(String(a.id))).length;
+  }
+
   function updateBellUI() {
     const bell = $('topbarBell');
     if (!bell) return;
-
     const supported = 'Notification' in window;
     const perm = supported ? Notification.permission : 'unsupported';
+    let icon = '🔔';
+    if (!supported || perm === 'denied') icon = '🔕';
 
     bell.classList.remove('bell-on', 'bell-off', 'bell-blocked');
-    bell.textContent = (!supported || perm === 'denied') ? '🔕' : '🔔';
+    if (!supported || perm === 'denied') bell.classList.add('bell-blocked');
+    else if (perm === 'granted') bell.classList.add('bell-on');
+    else bell.classList.add('bell-off');
 
-    if (!supported || perm === 'denied') {
-      bell.classList.add('bell-blocked');
-      bell.title = supported ? 'Notifications blocked' : 'Notifications not supported';
-    } else if (perm === 'granted') {
-      bell.classList.add('bell-on');
-      bell.title = 'Notifications enabled';
-    } else {
-      bell.classList.add('bell-off');
-      bell.title = 'Click to enable notifications';
+    const count = getUnreadNotifCount();
+    const badgeHtml = '<span class="bell-badge"' + (count > 0 ? '' : ' hidden') + '>' +
+      (count > 99 ? '99+' : count) + '</span>';
+    bell.innerHTML = icon + badgeHtml;
+    bell.title = count > 0
+      ? count + ' new notification' + (count === 1 ? '' : 's')
+      : 'Notifications';
+  }
+
+  function ensureNotifCenter() {
+    let modal = $('notifCenterModal');
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.id = 'notifCenterModal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML =
+      '<div class="modal" style="max-width:560px;width:95vw;">' +
+        '<div class="modal-header">' +
+          '<div style="display:flex;flex-direction:column;gap:0.25rem;">' +
+            '<div class="card-category">NOTIFICATIONS</div>' +
+            '<h2 class="modal-title">Recent Pings &amp; Announcements</h2>' +
+          '</div>' +
+          '<button class="modal-close" type="button" id="notifCenterClose">✕</button>' +
+        '</div>' +
+        '<div class="modal-body" id="notifCenterBody" style="gap:0.6rem;"></div>' +
+        '<div class="modal-footer" style="justify-content:space-between;">' +
+          '<button class="btn btn-ghost" id="notifCenterMarkRead" type="button">✓ Mark all read</button>' +
+          '<button class="btn btn-primary" type="button" id="notifCenterDone">Close</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+
+    modal.addEventListener('click', e => {
+      if (e.target === modal) modal.classList.remove('active');
+    });
+    modal.querySelector('#notifCenterClose').addEventListener('click', () => modal.classList.remove('active'));
+    modal.querySelector('#notifCenterDone').addEventListener('click', () => modal.classList.remove('active'));
+    modal.querySelector('#notifCenterMarkRead').addEventListener('click', () => {
+      const readIds = getReadNotifIds();
+      getMyPings().forEach(a => readIds.push(String(a.id)));
+      setReadNotifIds(readIds);
+      renderNotifCenter();
+      updateBellUI();
+    });
+    return modal;
+  }
+
+  function renderNotifCenter() {
+    const modal = ensureNotifCenter();
+    const body = modal.querySelector('#notifCenterBody');
+    const list = getMyPings();
+
+    if (list.length === 0) {
+      body.innerHTML = '<div class="notif-empty">No pings yet. When an Admin or Editor in Chief messages you, it will appear here.</div>';
+      return;
     }
+
+    const readIds = new Set(getReadNotifIds());
+    const recent = list.slice().reverse().slice(0, 50);
+
+    body.innerHTML = recent.map(a => {
+      const unread = !readIds.has(String(a.id));
+      const badge = a.target === 'ALL' ? 'ANNOUNCEMENT' : 'DIRECT MESSAGE';
+      return '<div class="notif-item' + (unread ? ' unread' : '') + '">' +
+        '<div class="notif-meta">' +
+          '<span class="announcement-badge-alert">' + badge + '</span>' +
+          '<span>From <b>' + Utils.escapeHtml(a.sender) + '</b></span>' +
+          '<span>• ' + Utils.escapeHtml(a.timestamp || '') + '</span>' +
+        '</div>' +
+        '<div class="notif-body">' + Utils.escapeHtml(a.text) + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function openNotificationCenter() {
+    renderNotifCenter();
+    ensureNotifCenter().classList.add('active');
+    setTimeout(() => {
+      const readIds = getReadNotifIds();
+      getMyPings().forEach(a => readIds.push(String(a.id)));
+      setReadNotifIds(readIds);
+      updateBellUI();
+    }, 900);
   }
 
   async function toggleBellNotifications() {
-    if (!('Notification' in window)) {
-      if (typeof triggerNotificationToast === 'function')
-        triggerNotificationToast('Notifications are not supported in this browser.');
-      return;
+    if ('Notification' in window && Notification.permission === 'default') {
+      try { await Notification.requestPermission(); } catch {}
     }
-    if (Notification.permission === 'granted') {
-      if (typeof triggerNotificationToast === 'function')
-        triggerNotificationToast('Notifications already enabled. Disable them in browser settings.');
-      return;
-    }
-    if (Notification.permission === 'denied') {
-      if (typeof triggerNotificationToast === 'function')
-        triggerNotificationToast('Notifications are blocked. Enable them in your browser settings.');
-      return;
-    }
-    const result = await Notification.requestPermission();
     updateBellUI();
-    if (result === 'granted') {
-      if (typeof triggerNotificationToast === 'function')
-        triggerNotificationToast('✓ Notifications enabled.');
-      const u = window.JC.Session.user();
-      if (u && typeof setOneSignalUser === 'function') setOneSignalUser(u.name).catch(() => {});
-    }
+    openNotificationCenter();
   }
 
   /* ══════════════════════════════════════════════════════════════
@@ -202,43 +275,60 @@
         b.insertBefore(slot, b.firstChild);
       }
       if (!b.querySelector('.brand-name')) {
-        b.appendChild(Utils.el('h1', { class: 'brand-name' }, "Journalist's Compass"));
+        b.appendChild(Utils.el('h1', { class: 'brand-name' }, 'Sentinel Journalist Compass'));
       }
     });
 
-    /* Topbar bell */
     if (topRight) {
+      /* Accounts button */
+      let acct = $('topbarAccountsBtn');
+      if (!acct) {
+        acct = Utils.el('button', {
+          type: 'button', class: 'topbar-bell', id: 'topbarAccountsBtn',
+          title: 'Staff & Accounts', 'aria-label': 'Staff & Accounts'
+        }, '👥');
+        acct.onclick = () => {
+          $('controlTray')?.classList.add('active');
+          $('controlTrayOverlay')?.classList.add('active');
+        };
+        const bellRef = $('topbarBell');
+        if (bellRef) topRight.insertBefore(acct, bellRef);
+        else topRight.insertBefore(acct, topRight.firstChild);
+      }
+      const role = window.JC.Session.user()?.role;
+      acct.style.display = (role === 'ADMIN' || role === 'EDITOR') ? '' : 'none';
+
+      /* Bell */
       let bell = $('topbarBell');
       if (!bell) {
         bell = Utils.el('button', {
           type: 'button', class: 'topbar-bell', id: 'topbarBell',
-          title: 'Enable notifications', 'aria-label': 'Notifications'
+          title: 'Notifications', 'aria-label': 'Notifications'
         });
         bell.onclick = toggleBellNotifications;
-        topRight.insertBefore(bell, topRight.firstChild);
+        topRight.insertBefore(bell, topRight.firstChild.nextSibling || topRight.firstChild);
+      } else if (!bell.dataset.boundBell) {
+        bell.dataset.boundBell = '1';
+        bell.onclick = toggleBellNotifications;
       }
       updateBellUI();
+
+      /* Profile pill */
+      if (!$('topbarProfileBtn')) {
+        const btn = Utils.el('button', {
+          type: 'button', class: 'topbar-menu-btn', id: 'topbarProfileBtn',
+          title: 'Open workspace settings'
+        });
+        btn.appendChild(Utils.el('div', { class: 'topbar-avatar', id: 'topbarAvatar' }, 'JC'));
+        btn.appendChild(Utils.el('span', { class: 'topbar-name', id: 'topbarName' }, 'Loading…'));
+        btn.onclick = () => $('settingsSidebarBtn')?.click();
+        topRight.appendChild(btn);
+      }
     }
 
-    /* Profile pill */
-    if (topRight && !$('topbarProfileBtn')) {
-      const btn = Utils.el('button', {
-        type: 'button', class: 'topbar-menu-btn', id: 'topbarProfileBtn',
-        title: 'Open workspace settings'
-      });
-      btn.appendChild(Utils.el('div', { class: 'topbar-avatar', id: 'topbarAvatar' }, 'JC'));
-      btn.appendChild(Utils.el('span', { class: 'topbar-name', id: 'topbarName' }, 'Loading…'));
-      btn.onclick = () => $('settingsSidebarBtn')?.click();
-      topRight.appendChild(btn);
-    }
-
-    /* Hide original user chip */
     $('userAvatarBtn')?.classList.add('chip-hidden');
-
-    /* Remove old sidebar bell */
     $('sideBell')?.remove();
 
-    /* Tray hamburger */
     const trayHeader = document.querySelector('.control-tray .tray-header');
     if (trayHeader && !$('trayHamburger')) {
       const hb = Utils.el('button', {
@@ -256,7 +346,6 @@
       trayHeader.insertBefore(hb, trayHeader.firstChild);
     }
 
-    /* Mobile menu-toggle → logo */
     const menuBtn = $('menuToggle');
     if (menuBtn && !menuBtn.querySelector('img')) {
       menuBtn.innerHTML = '';
@@ -267,7 +356,6 @@
       menuBtn.appendChild(img);
     }
 
-    /* Mirror name / avatar */
     const mirror = () => {
       const g = id => ($(id) || {}).textContent || '';
       const av = $('topbarAvatar'); const nm = $('topbarName');
@@ -293,22 +381,16 @@
     const dir = $('staffDirectoryList');
     if (dir && dir.closest('.panel-card')) dir.closest('.panel-card').classList.add('dir-panel');
 
-    const ac = $('announcementsStreamContainer');
-    if (ac) {
-      ac.addEventListener('mouseenter', () => paused = true);
-      ac.addEventListener('mouseleave', () => paused = false);
-    }
-    requestAnimationFrame(tickScroll);
-
     initBrightness();
     buildCabinetStats();
     buildLayout();
+
+    setInterval(() => { if (window.JC.getAnnouncements) updateBellUI(); }, 3000);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
-  /* Wrap to keep cabinet + bell fresh */
   const origStats = window.generateDashboardStats;
   if (origStats) {
     window.generateDashboardStats = function () { origStats.apply(this, arguments); buildCabinetStats(); };
@@ -322,7 +404,7 @@
   }
 
   document.addEventListener('click', e => {
-    if (e.target.closest('.settings-sidebar-btn, #settingsGearBtn, #userAvatarBtn, #topbarProfileBtn')) {
+    if (e.target.closest('.settings-sidebar-btn, #settingsGearBtn, #userAvatarBtn, #topbarProfileBtn, #topbarAccountsBtn')) {
       setTimeout(initBrightness, 50);
     }
   }, true);

@@ -1,9 +1,13 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  JOURNALIST'S COMPASS v6.7                                          ║
- * ║  · Overdue projects modal (extend / archive)                        ║
- * ║  · Multi-assignee tasks + search pickers                            ║
- * ║  · Editor in Chief role                                             ║
+ * ║  SENTINEL JOURNALIST'S COMPASS v7.1                                  ║
+ * ║  · Overdue projects modal (extend / archive)                         ║
+ * ║  · Multi-assignee tasks + search pickers                             ║
+ * ║  · Editor in Chief role                                              ║
+ * ║  · Event deletion (Admin/EIC)                                        ║
+ * ║  · Activity summary export/delete                                    ║
+ * ║  · Attendance 15-min check-in cooldown + session duration            ║
+ * ║  · Geofence venue enforcement + spot-checks while checked in         ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
@@ -199,6 +203,8 @@ async function syncAllDataFromSupabase() {
       location: d.location || '', reporter: d.reporter || '',
       priority: d.priority || 'MEDIUM', status: d.status || 'ACTIVE',
       imageData: d.image_data || '', createdBy: d.created_by || '',
+      venue_name: d.venue_name || '', venue_lat: d.venue_lat ?? null,
+      venue_lon: d.venue_lon ?? null, venue_radius: d.venue_radius ?? 150,
       archived: b(d.archived), created_at: d.created_at
     }));
     else console.error('deployments sync', error);
@@ -265,7 +271,9 @@ async function syncAllDataFromSupabase() {
       check_out_lat: row.check_out_lat || '',
       check_out_lon: row.check_out_lon || '',
       check_out_timestamp: row.check_out_timestamp || '',
-      task_ref: row.task_ref || '', task_ref_id: row.task_ref_id || ''
+      task_ref: row.task_ref || '', task_ref_id: row.task_ref_id || '',
+      check_type: row.check_type || 'CHECK_IN',
+      session_ref: row.session_ref || null
     }));
     else console.error('attendance sync', error);
   }
@@ -335,7 +343,9 @@ function subscribeRealtime() {
         note: row.note || '', timestamp: row.timestamp_iso,
         check_out_time: row.check_out_time || '', check_out_lat: row.check_out_lat || '',
         check_out_lon: row.check_out_lon || '', check_out_timestamp: row.check_out_timestamp || '',
-        task_ref: row.task_ref || '', task_ref_id: row.task_ref_id || ''
+        task_ref: row.task_ref || '', task_ref_id: row.task_ref_id || '',
+        check_type: row.check_type || 'CHECK_IN',
+        session_ref: row.session_ref || null
       });
       flushCachedCollections();
       renderAttendanceTable();
@@ -384,7 +394,7 @@ function notifyIncomingPing(ann) {
   if (!isPingedToMe && !isBroadcastAll) return;
   if (ann.sender === currentUser.name) return;
 
-  const title = isBroadcastAll ? 'JCompass — Announcement' : 'JCompass — Direct Message';
+  const title = isBroadcastAll ? 'Sentinel JCompass — Announcement' : 'Sentinel JCompass — Direct Message';
   const body = ann.sender + ': ' + ann.text;
 
   if (('Notification' in window) && Notification.permission === 'granted' && document.hidden) {
@@ -507,7 +517,7 @@ function generateDashboardStats() {
   });
   const staffCount = registeredUsersDB.filter(u => u.role === 'STAFF').length;
   const todayStr = Utils.todayLocalISO();
-  const todayCheckins = attendanceLogs.filter(l => l.date === todayStr).length;
+  const todayCheckins = attendanceLogs.filter(l => l.date === todayStr && (l.check_type || 'CHECK_IN') === 'CHECK_IN').length;
 
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
   set('statActiveProjects', active.length);
@@ -758,7 +768,7 @@ async function deleteProject(projectId) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   SECTION 10b: OVERDUE PROJECTS — extend / archive
+   SECTION 10b: OVERDUE PROJECTS
    ═══════════════════════════════════════════════════════════════════════ */
 
 function ensureOverdueModal() {
@@ -808,7 +818,6 @@ function openOverdueProjectsModal() {
     return;
   }
 
-  // Default the extend date to tomorrow
   const tomorrow = new Date(today.getTime() + 86400000);
   const defaultDate = tomorrow.toISOString().split('T')[0];
 
@@ -842,7 +851,7 @@ function openOverdueProjectsModal() {
       const newDate = dateInput?.value;
       if (!newDate) { triggerNotificationToast('Pick a new deadline date first.'); return; }
       await extendProjectDeadline(id, newDate);
-      openOverdueProjectsModal(); // re-render
+      openOverdueProjectsModal();
     });
   });
   body.querySelectorAll('[data-archive-id]').forEach(btn => {
@@ -1268,6 +1277,15 @@ function openDeploymentProfile(deploymentId) {
         reporters.map(r => '<span style="background:rgba(76,110,73,0.25); border:1px solid rgba(76,110,73,0.5); color:#9ae6b4; padding:0.35rem 0.75rem; border-radius:20px; font-size:0.82rem; font-weight:600;">' + esc(r) + '</span>').join('') +
       '</div>' +
     '</div>' +
+    (d.venue_name || (d.venue_lat && d.venue_lon)
+      ? '<div><span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">📍 Venue Geofence</span>' +
+        '<div style="margin-top:0.25rem; font-size:0.9rem;">' +
+          esc(d.venue_name || 'Unnamed venue') +
+          (d.venue_lat && d.venue_lon
+            ? ' · <span style="color:var(--text-muted);">' + esc(d.venue_lat) + ', ' + esc(d.venue_lon) + ' · ' + esc(d.venue_radius || 150) + ' m radius</span>'
+            : '') +
+        '</div></div>'
+      : '') +
     '<div><span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">📅 Created</span><div style="margin-top:0.25rem; font-size:0.9rem;">' + esc(Utils.fmtDateTime(d.created_at)) + '</div></div>' +
     (d.description ? '<div><span style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">📝 Instructions</span><div style="margin-top:0.4rem; font-size:0.9rem; white-space:pre-line; line-height:1.6; background:rgba(0,0,0,0.2); padding:0.75rem; border-radius:6px;">' + esc(d.description) + '</div></div>' : '') +
     '<div style="font-size:0.75rem; color:var(--text-muted);">Created by <b>' + esc(d.createdBy || 'Admin') + '</b></div>';
@@ -1613,14 +1631,49 @@ function generateEventsTrackerChecklist() {
     container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem;">No upcoming events.</div>';
     return;
   }
+  const canManage = isPrivileged();
   events.forEach(evt => {
     const div = document.createElement('div');
     div.className = 'event-row' + (evt.completed ? ' done' : '');
     div.innerHTML =
       '<div><div style="font-weight:600;">' + esc(evt.name) + '</div>' +
-      '<div style="font-size:0.75rem;color:var(--text-muted);">' + esc(evt.date || '') + '</div></div>';
+      '<div style="font-size:0.75rem;color:var(--text-muted);">' + esc(evt.date || '') + '</div></div>' +
+      (canManage
+        ? '<button class="event-delete-btn" data-evt-del="' + esc(evt.id) + '" type="button" title="Delete event">✕</button>'
+        : '');
     container.appendChild(div);
   });
+  container.querySelectorAll('[data-evt-del]').forEach(btn => {
+    btn.addEventListener('click', () => deleteEvent(btn.dataset.evtDel));
+  });
+}
+
+async function deleteEvent(eventId) {
+  if (!isPrivileged()) {
+    triggerNotificationToast('Only Admin / Editor in Chief can delete events.');
+    return;
+  }
+  const idIsNum = !isNaN(parseInt(eventId, 10));
+  const id = idIsNum ? parseInt(eventId, 10) : eventId;
+  const evt = events.find(e => e.id === id || String(e.id) === String(eventId));
+  if (!evt) return;
+  if (!confirm('Delete event "' + evt.name + '"?')) return;
+
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient.from('events').delete().eq('id', evt.id);
+      if (error) throw error;
+    } catch (err) {
+      triggerNotificationToast('Delete failed: ' + err.message);
+      return;
+    }
+  }
+  events = events.filter(e => e.id !== evt.id);
+  await logAudit('delete_event', 'event', evt.id, evt.name, 'Deleted');
+  flushCachedCollections();
+  generateEventsTrackerChecklist();
+  generateDeadlineCalendarGrid();
+  triggerNotificationToast('✓ Event deleted.');
 }
 
 function generateDeadlineCalendarGrid() {
@@ -1741,23 +1794,356 @@ function openCalendarDayModal(dateStr) {
 
 /* ═══════════════════════════════════════════════════════════════════════
    SECTION 17: ATTENDANCE
+   · 15-min check-in cooldown
+   · Geofence enforcement on check-in / check-out
+   · Random spot-checks while a session is open (check_type = SPOT_CHECK)
    ═══════════════════════════════════════════════════════════════════════ */
 
+const CHECKIN_COOLDOWN_MS      = 15 * 60 * 1000;
+const SPOT_CHECK_MIN_MS        = 20 * 60 * 1000;
+const SPOT_CHECK_MAX_MS        = 40 * 60 * 1000;
+const SPOT_CHECK_RESPONSE_MS   = 90 * 1000;
+const SPOT_CHECK_STATE_KEY     = 'jcompass_spot_state_v1';
+
+let attendanceTickerId = null;
+let spotCheckTickerId  = null;
+let spotCheckOverlayEl = null;
+let spotCheckCountdownInterval = null;
+
 const getTodayStr = () => Utils.todayLocalISO();
+
+/* ── Generic helpers ─────────────────────────────────────────────── */
+function formatDuration(ms) {
+  if (!ms || ms < 0) ms = 0;
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return h + 'h ' + m + 'm ' + s + 's';
+  if (m > 0) return m + 'm ' + s + 's';
+  return s + 's';
+}
+
+function distanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = d => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/* ── Session helpers ─────────────────────────────────────────────── */
+function isCheckInRow(log) {
+  return (log.check_type || 'CHECK_IN') === 'CHECK_IN';
+}
+function isSpotCheckRow(log) {
+  return log.check_type === 'SPOT_CHECK';
+}
 
 function hasAnyCheckInToday() {
   if (!currentUser) return false;
   const today = getTodayStr();
-  return attendanceLogs.some(log => log.reporter === currentUser.name && log.date === today);
+  return attendanceLogs.some(log =>
+    log.reporter === currentUser.name &&
+    log.date === today &&
+    isCheckInRow(log)
+  );
 }
 
 function getActiveAttendanceSession() {
   if (!currentUser) return null;
   const today = getTodayStr();
   const todays = attendanceLogs
-    .filter(l => l.reporter === currentUser.name && l.date === today)
+    .filter(l => l.reporter === currentUser.name && l.date === today && isCheckInRow(l))
     .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
   return todays.find(l => !l.check_out_time) || null;
+}
+
+function getLastCheckInForToday() {
+  if (!currentUser) return null;
+  const today = getTodayStr();
+  const todays = attendanceLogs
+    .filter(l => l.reporter === currentUser.name && l.date === today && isCheckInRow(l))
+    .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+  return todays[0] || null;
+}
+
+function getCheckInCooldownRemaining() {
+  if (!currentUser) return 0;
+  if (getActiveAttendanceSession()) return 0;
+  const last = getLastCheckInForToday();
+  if (!last || !last.timestamp) return 0;
+  const elapsed = Date.now() - new Date(last.timestamp).getTime();
+  const remaining = CHECKIN_COOLDOWN_MS - elapsed;
+  return remaining > 0 ? remaining : 0;
+}
+
+function getSpotChecksForSession(sessionId) {
+  if (sessionId == null) return [];
+  const key = String(sessionId);
+  return attendanceLogs
+    .filter(l => isSpotCheckRow(l) && String(l.session_ref) === key)
+    .sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+}
+
+/* ── Find the deployment (and thus venue) linked to a session ────── */
+function getSessionDeployment(session) {
+  if (!session || !session.task_ref_id) return null;
+  return deployments.find(d => String(d.id) === String(session.task_ref_id)) || null;
+}
+
+function getVenueForSession(session) {
+  const dep = getSessionDeployment(session);
+  if (!dep) return null;
+  const lat = parseFloat(dep.venue_lat ?? dep.venueLat);
+  const lon = parseFloat(dep.venue_lon ?? dep.venueLon);
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+  const radius = parseInt(dep.venue_radius ?? dep.venueRadius, 10) || 150;
+  const name = dep.venue_name || dep.venueName || dep.title;
+  return { lat, lon, radius, name };
+}
+
+function geofenceCheck(venue, lat, lon) {
+  if (!venue) return { ok: true };
+  const dist = distanceMeters(venue.lat, venue.lon, lat, lon);
+  if (dist <= venue.radius) return { ok: true, dist };
+  return { ok: false, dist };
+}
+
+/* ── Persisted spot-check scheduling state ───────────────────────── */
+function loadSpotState() {
+  try {
+    const raw = localStorage.getItem(SPOT_CHECK_STATE_KEY);
+    const s = raw ? JSON.parse(raw) : null;
+    if (!s || typeof s !== 'object') throw 0;
+    return s;
+  } catch { return null; }
+}
+function saveSpotState(s) {
+  try {
+    if (s == null) localStorage.removeItem(SPOT_CHECK_STATE_KEY);
+    else localStorage.setItem(SPOT_CHECK_STATE_KEY, JSON.stringify(s));
+  } catch {}
+}
+
+function ensureSpotScheduleForSession(session) {
+  if (!session) { saveSpotState(null); return null; }
+  let s = loadSpotState();
+  if (!s || String(s.sessionId) !== String(session.id)) {
+    const nextDelay = SPOT_CHECK_MIN_MS +
+      Math.floor(Math.random() * (SPOT_CHECK_MAX_MS - SPOT_CHECK_MIN_MS));
+    s = {
+      sessionId: String(session.id),
+      startedAt: Date.now(),
+      nextAt: Date.now() + nextDelay,
+      lastAt: Date.now()
+    };
+    saveSpotState(s);
+  }
+  return s;
+}
+
+/* ── Spot-check overlay ──────────────────────────────────────────── */
+function ensureSpotCheckOverlay() {
+  if (spotCheckOverlayEl && document.body.contains(spotCheckOverlayEl)) return spotCheckOverlayEl;
+  const el = document.createElement('div');
+  el.className = 'spot-check-overlay';
+  el.id = 'spotCheckOverlay';
+  el.style.display = 'none';
+  el.innerHTML =
+    '<div class="spot-check-box">' +
+      '<div class="spot-check-icon">📍</div>' +
+      '<h2>Still at the venue?</h2>' +
+      '<p>Tap below to confirm your location. This keeps your session verified.</p>' +
+      '<div class="spot-check-timer" id="spotCheckTimer">90</div>' +
+      '<button class="btn btn-primary" id="spotCheckConfirmBtn" type="button">✓ I\'m here</button>' +
+    '</div>';
+  document.body.appendChild(el);
+  el.querySelector('#spotCheckConfirmBtn').addEventListener('click', handleSpotCheckConfirm);
+  spotCheckOverlayEl = el;
+  return el;
+}
+
+function showSpotCheckPrompt() {
+  const session = getActiveAttendanceSession();
+  if (!session) return false;
+  const el = ensureSpotCheckOverlay();
+  el.style.display = 'flex';
+
+  let remaining = Math.ceil(SPOT_CHECK_RESPONSE_MS / 1000);
+  const timerEl = el.querySelector('#spotCheckTimer');
+  timerEl.textContent = remaining;
+  timerEl.classList.remove('danger');
+
+  clearInterval(spotCheckCountdownInterval);
+  spotCheckCountdownInterval = setInterval(() => {
+    remaining--;
+    if (remaining <= 30) timerEl.classList.add('danger');
+    timerEl.textContent = remaining > 0 ? remaining : 0;
+    if (remaining <= 0) {
+      clearInterval(spotCheckCountdownInterval);
+      spotCheckCountdownInterval = null;
+      if (document.visibilityState === 'visible') {
+        recordSpotCheck(session, null, 'MISSED');
+      }
+      hideSpotCheckPrompt();
+      scheduleNextSpotCheck(session, true);
+    }
+  }, 1000);
+
+  if (navigator.vibrate) { try { navigator.vibrate([200, 100, 200]); } catch {} }
+  return true;
+}
+
+function hideSpotCheckPrompt() {
+  if (spotCheckOverlayEl) spotCheckOverlayEl.style.display = 'none';
+  clearInterval(spotCheckCountdownInterval);
+  spotCheckCountdownInterval = null;
+}
+
+async function handleSpotCheckConfirm() {
+  const session = getActiveAttendanceSession();
+  if (!session) { hideSpotCheckPrompt(); return; }
+  if (!navigator.geolocation) {
+    triggerNotificationToast('Geolocation not supported.');
+    return;
+  }
+  const btn = spotCheckOverlayEl?.querySelector('#spotCheckConfirmBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Locating…'; }
+
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+    const accuracy = Math.round(pos.coords.accuracy);
+    const label = await reverseGeocodeLabel(lat, lon);
+
+    const venue = getVenueForSession(session);
+    const fence = geofenceCheck(venue, lat, lon);
+    const note = fence.ok ? '' : 'OUTSIDE_VENUE';
+
+    await recordSpotCheck(session, {
+      lat: lat.toFixed(6), lon: lon.toFixed(6),
+      accuracy, location: label, note
+    });
+
+    hideSpotCheckPrompt();
+    if (btn) { btn.disabled = false; btn.textContent = '✓ I\'m here'; }
+
+    if (fence.ok) {
+      triggerNotificationToast('✓ Location verified.');
+    } else {
+      triggerNotificationToast('⚠ Recorded — you appear ' + Math.round(fence.dist) + ' m from the venue.');
+    }
+
+    scheduleNextSpotCheck(session, true);
+  }, () => {
+    if (btn) { btn.disabled = false; btn.textContent = '✓ I\'m here'; }
+    triggerNotificationToast('Location access denied. Spot-check marked missed.');
+    recordSpotCheck(session, null, 'MISSED').then(() => {
+      hideSpotCheckPrompt();
+      scheduleNextSpotCheck(session, true);
+    });
+  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+}
+
+async function recordSpotCheck(session, geo, forceNote) {
+  if (!currentUser || !session) return null;
+  const now = new Date();
+  const entry = {
+    id: 'pending-' + now.getTime(),
+    reporter: currentUser.name,
+    role: currentUser.role,
+    date: getTodayStr(),
+    time: Utils.fmtTime(now),
+    lat: geo ? geo.lat : '',
+    lon: geo ? geo.lon : '',
+    accuracy: geo ? geo.accuracy : '',
+    location: geo ? geo.location : 'Location unavailable',
+    note: forceNote || (geo && geo.note) || '',
+    timestamp: now.toISOString(),
+    check_out_time: '', check_out_lat: '', check_out_lon: '', check_out_timestamp: '',
+    task_ref: session.task_ref || '',
+    task_ref_id: session.task_ref_id || '',
+    check_type: 'SPOT_CHECK',
+    session_ref: String(session.id)
+  };
+
+  if (supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient.from('attendance').insert({
+        reporter: entry.reporter,
+        role: entry.role,
+        date: entry.date,
+        time: entry.time,
+        lat: entry.lat ? parseFloat(entry.lat) : null,
+        lon: entry.lon ? parseFloat(entry.lon) : null,
+        accuracy: entry.accuracy || null,
+        location: entry.location,
+        note: entry.note,
+        timestamp_iso: entry.timestamp,
+        task_ref: entry.task_ref,
+        task_ref_id: entry.task_ref_id,
+        check_type: 'SPOT_CHECK',
+        session_ref: entry.session_ref
+      }).select().single();
+      if (error) throw error;
+      if (data && data.id) entry.id = 'remote-' + data.id;
+    } catch (err) {
+      console.warn('Spot-check write failed:', err);
+    }
+  }
+  attendanceLogs.push(entry);
+  flushCachedCollections();
+  renderAttendanceTable();
+  return entry;
+}
+
+function scheduleNextSpotCheck(session, fromNow) {
+  if (!session) { saveSpotState(null); return; }
+  const delay = SPOT_CHECK_MIN_MS +
+    Math.floor(Math.random() * (SPOT_CHECK_MAX_MS - SPOT_CHECK_MIN_MS));
+  const state = {
+    sessionId: String(session.id),
+    startedAt: (loadSpotState()?.startedAt) || Date.now(),
+    lastAt: Date.now(),
+    nextAt: Date.now() + (fromNow ? delay : 0)
+  };
+  saveSpotState(state);
+}
+
+function startSpotCheckScheduler() {
+  if (spotCheckTickerId) return;
+  spotCheckTickerId = setInterval(() => {
+    const session = getActiveAttendanceSession();
+    if (!session) { saveSpotState(null); return; }
+    if (spotCheckOverlayEl && spotCheckOverlayEl.style.display === 'flex') return;
+    if (document.visibilityState !== 'visible') return;
+    const s = ensureSpotScheduleForSession(session);
+    if (!s) return;
+    if (Date.now() >= s.nextAt) {
+      const shown = showSpotCheckPrompt();
+      if (!shown) scheduleNextSpotCheck(session, true);
+    }
+  }, 30 * 1000);
+}
+
+function stopSpotCheckScheduler() {
+  if (spotCheckTickerId) {
+    clearInterval(spotCheckTickerId);
+    spotCheckTickerId = null;
+  }
+  hideSpotCheckPrompt();
+  saveSpotState(null);
+}
+
+/* ── Attendance UI ───────────────────────────────────────────────── */
+function stopAttendanceTicker() {
+  if (attendanceTickerId) {
+    clearInterval(attendanceTickerId);
+    attendanceTickerId = null;
+  }
 }
 
 function populateAttendanceTaskRefs() {
@@ -1770,7 +2156,8 @@ function populateAttendanceTaskRefs() {
   myDeployments.forEach(d => {
     const opt = document.createElement('option');
     opt.value = d.id + '|' + d.title;
-    opt.textContent = '📡 ' + d.title + (d.location ? ' — ' + d.location : '');
+    const hasVenue = !!getVenueForDeployment(d);
+    opt.textContent = (hasVenue ? '📍 ' : '📡 ') + d.title + (d.location ? ' — ' + d.location : '');
     select.appendChild(opt);
   });
   if (myDeployments.length === 0) {
@@ -1782,37 +2169,112 @@ function populateAttendanceTaskRefs() {
   }
 }
 
+function getVenueForDeployment(d) {
+  if (!d) return null;
+  const lat = parseFloat(d.venue_lat ?? d.venueLat);
+  const lon = parseFloat(d.venue_lon ?? d.venueLon);
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+  const radius = parseInt(d.venue_radius ?? d.venueRadius, 10) || 150;
+  const name = d.venue_name || d.venueName || d.title;
+  return { lat, lon, radius, name };
+}
+
 function updateAttendanceButtons() {
   const btnIn = document.getElementById('checkInBtn');
   const btnOut = document.getElementById('checkOutBtn');
   const statusEl = document.getElementById('attendanceTodayStatus');
   if (!btnIn || !btnOut || !statusEl) return;
 
-  const activeSession = getActiveAttendanceSession();
-  const anyCheckIn = hasAnyCheckInToday();
+  stopAttendanceTicker();
+  btnIn.classList.remove('cooldown-active', 'checked-in-active');
 
+  const activeSession = getActiveAttendanceSession();
+
+  /* STATE 1: checked in */
   if (activeSession) {
     btnIn.disabled = true;
     btnIn.textContent = '✓ Checked In';
     btnIn.style.background = 'var(--success)';
+    btnIn.classList.add('checked-in-active');
+
     btnOut.disabled = false;
     btnOut.style.background = '';
-    statusEl.innerHTML = '✓ Checked in at <b>' + esc(activeSession.time) + '</b>' +
-      (activeSession.location ? ' · ' + esc(activeSession.location) : '') +
-      ' · Not yet checked out';
-  } else if (anyCheckIn) {
-    btnIn.disabled = false;
-    btnIn.textContent = '📍 Check In Again';
-    btnIn.style.background = '';
+
+    const venue = getVenueForSession(activeSession);
+
+    const paintDuration = () => {
+      const live = getActiveAttendanceSession();
+      if (!live) { stopAttendanceTicker(); updateAttendanceButtons(); return; }
+      const since = live.timestamp ? new Date(live.timestamp).getTime() : Date.now();
+      const dur = formatDuration(Date.now() - since);
+
+      const spotCount = getSpotChecksForSession(live.id);
+      const confirmed = spotCount.filter(s => s.note !== 'MISSED' && s.note !== 'OUTSIDE_VENUE').length;
+      const missed    = spotCount.filter(s => s.note === 'MISSED').length;
+      const outside   = spotCount.filter(s => s.note === 'OUTSIDE_VENUE').length;
+
+      let spotLine = '';
+      if (spotCount.length === 0) {
+        spotLine = '<br>Spot-checks: <b>none yet</b> — random verification is active.';
+      } else {
+        spotLine = '<br>Spot-checks: <b>' + confirmed + ' verified</b>' +
+          (missed ? ' · <span style="color:#fc8181;">' + missed + ' missed</span>' : '') +
+          (outside ? ' · <span style="color:#fbd38d;">' + outside + ' outside venue</span>' : '');
+      }
+
+      const venueLine = venue
+        ? '<br>📍 Venue: <b>' + esc(venue.name) + '</b> (' + venue.radius + ' m radius)'
+        : '';
+
+      statusEl.innerHTML =
+        '✓ Checked in at <b>' + esc(live.time) + '</b>' +
+        (live.location ? ' · ' + esc(live.location) : '') +
+        ' · Duration: <b>' + dur + '</b>' + venueLine + spotLine;
+    };
+    paintDuration();
+    attendanceTickerId = setInterval(paintDuration, 1000);
+
+    if (!spotCheckTickerId) startSpotCheckScheduler();
+    return;
+  }
+
+  /* STATE 2: cooldown */
+  const cooldown = getCheckInCooldownRemaining();
+  if (cooldown > 0) {
+    btnIn.disabled = true;
     btnOut.disabled = true;
     btnOut.style.background = '';
-    statusEl.innerHTML = '✓ You have already completed a session today. You can check in again if needed.';
+    btnIn.style.background = '';
+    btnIn.classList.add('cooldown-active');
+
+    const tickCooldown = () => {
+      const remaining = getCheckInCooldownRemaining();
+      if (!remaining || remaining <= 0) {
+        stopAttendanceTicker();
+        updateAttendanceButtons();
+        return;
+      }
+      const sec = Math.ceil(remaining / 1000);
+      const m = Math.floor(sec / 60);
+      const s = String(sec % 60).padStart(2, '0');
+      btnIn.textContent = '⏳ ' + m + ':' + s;
+      statusEl.innerHTML = '✓ You already checked in today. Next check-in available in <b>' + m + ':' + s + '</b>.';
+    };
+    tickCooldown();
+    attendanceTickerId = setInterval(tickCooldown, 1000);
+    return;
+  }
+
+  /* STATE 3: ready */
+  btnIn.disabled = false;
+  btnIn.textContent = '📍 Check In';
+  btnIn.style.background = '';
+  btnOut.disabled = true;
+  btnOut.style.background = '';
+
+  if (hasAnyCheckInToday()) {
+    statusEl.innerHTML = '✓ You have already checked in today. You can check in again now.';
   } else {
-    btnIn.disabled = false;
-    btnIn.textContent = '📍 Check In';
-    btnIn.style.background = '';
-    btnOut.disabled = true;
-    btnOut.style.background = '';
     statusEl.innerHTML = 'You have not checked in today.';
   }
 }
@@ -1825,7 +2287,8 @@ function renderAttendanceTable() {
   Array.from(tbody.querySelectorAll('tr:not(#attendanceEmptyRow)')).forEach(r => r.remove());
 
   const q = attendanceSearchQuery.toLowerCase();
-  const subset = attendanceLogs.filter(log =>
+  const visible = attendanceLogs.filter(log => !isSpotCheckRow(log));
+  const subset = visible.filter(log =>
     (log.reporter || '').toLowerCase().includes(q) ||
     (log.date || '').includes(attendanceSearchQuery) ||
     (log.location && log.location.toLowerCase().includes(q)) ||
@@ -1882,7 +2345,7 @@ function renderAttendanceTable() {
       : '';
 
     separator.innerHTML =
-      '<td colspan="11" class="attendance-day-separator-cell">' +
+      '<td colspan="13" class="attendance-day-separator-cell">' +
         '<span class="attendance-day-label">' + esc(dayLabel) + '</span>' +
         '<span class="attendance-day-count">' + totalCheckins + ' record' + (totalCheckins === 1 ? '' : 's') + openTag + '</span>' +
       '</td>';
@@ -1890,6 +2353,32 @@ function renderAttendanceTable() {
 
     rows.forEach(log => {
       globalIdx++;
+
+      let durationCell = '—';
+      if (log.timestamp && log.check_out_timestamp) {
+        durationCell = formatDuration(new Date(log.check_out_timestamp) - new Date(log.timestamp));
+      } else if (log.timestamp) {
+        durationCell = '<span style="color:#9ae6b4;font-weight:600;">' +
+          formatDuration(Date.now() - new Date(log.timestamp).getTime()) +
+          '</span> <span style="font-size:0.68rem;color:var(--text-muted);">live</span>';
+      }
+
+      const checks = getSpotChecksForSession(log.id);
+      let checksCell = '<span style="color:var(--text-muted);font-size:0.78rem;">—</span>';
+      if (checks.length > 0) {
+        const okCount = checks.filter(s => s.note !== 'MISSED' && s.note !== 'OUTSIDE_VENUE').length;
+        const missCount = checks.filter(s => s.note === 'MISSED').length;
+        const outCount = checks.filter(s => s.note === 'OUTSIDE_VENUE').length;
+        checksCell =
+          '<button class="spot-summary-btn" data-spot-open="' + esc(log.id) + '" type="button">' +
+            '<span class="ok">' + okCount + ' ✓</span>' +
+            (missCount ? '<span class="missed">· ' + missCount + ' missed</span>' : '') +
+            (outCount ? '<span style="color:#fbd38d;">· ' + outCount + ' out</span>' : '') +
+          '</button>';
+      } else if (!log.check_out_time) {
+        checksCell = '<span style="color:var(--text-muted);font-size:0.72rem;">tracking…</span>';
+      }
+
       const tr = document.createElement('tr');
       tr.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
       tr.innerHTML =
@@ -1898,6 +2387,8 @@ function renderAttendanceTable() {
         '<td style="padding:0.75rem 1rem;">' + esc(log.date) + '</td>' +
         '<td style="padding:0.75rem 1rem;color:#9ae6b4;">' + esc(log.time) + '</td>' +
         '<td style="padding:0.75rem 1rem;color:' + (log.check_out_time ? '#fc8181' : 'var(--text-muted)') + ';">' + esc(log.check_out_time || '—') + '</td>' +
+        '<td style="padding:0.75rem 1rem;font-size:0.8rem;">' + durationCell + '</td>' +
+        '<td style="padding:0.75rem 1rem;font-size:0.8rem;">' + checksCell + '</td>' +
         '<td style="padding:0.75rem 1rem;font-size:0.75rem;">' + esc((log.lat || '—') + ', ' + (log.lon || '—')) + '</td>' +
         '<td style="padding:0.75rem 1rem;">' + esc(log.location || '—') + '</td>' +
         '<td style="padding:0.75rem 1rem;font-size:0.78rem;">' + (log.task_ref ? '📡 ' + esc(log.task_ref) : '—') + '</td>' +
@@ -1915,21 +2406,64 @@ function renderAttendanceTable() {
       if (log) openGeoMap(log);
     });
   });
+  tbody.querySelectorAll('[data-spot-open]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sessionId = btn.dataset.spotOpen;
+      const log = attendanceLogs.find(l => String(l.id) === String(sessionId));
+      if (log) openGeoMap(log);
+    });
+  });
 }
 
 function openGeoMap(log) {
   if (!log) return;
   const info = document.getElementById('geoMapReporterInfo');
+
+  let durationStr = '—';
+  if (log.timestamp && log.check_out_timestamp) {
+    durationStr = formatDuration(new Date(log.check_out_timestamp) - new Date(log.timestamp));
+  } else if (log.timestamp) {
+    durationStr = formatDuration(Date.now() - new Date(log.timestamp).getTime()) + ' (live)';
+  }
+
+  const venue = getVenueForSession(log);
+  const checks = getSpotChecksForSession(log.id);
+  const okCount   = checks.filter(s => s.note !== 'MISSED' && s.note !== 'OUTSIDE_VENUE').length;
+  const missCount = checks.filter(s => s.note === 'MISSED').length;
+  const outCount  = checks.filter(s => s.note === 'OUTSIDE_VENUE').length;
+
+  const timelineHtml = checks.length === 0
+    ? '<div class="spot-timeline-empty">No spot-checks recorded for this session.</div>'
+    : checks.map(s => {
+        const cls = s.note === 'MISSED' ? 'missed' :
+                    s.note === 'OUTSIDE_VENUE' ? 'missed' : 'ok';
+        const tag = s.note === 'MISSED' ? '✕ MISSED' :
+                    s.note === 'OUTSIDE_VENUE' ? '⚠ OUTSIDE VENUE' : '✓ VERIFIED';
+        return '<div class="spot-timeline-row ' + cls + '">' +
+          '<span class="st-time">' + esc(s.time || '—') + '</span>' +
+          '<span class="st-tag">' + tag + '</span>' +
+          '<span class="st-loc">' + esc(s.location || '') + '</span>' +
+        '</div>';
+      }).join('');
+
   info.innerHTML =
     '<div style="display:flex; flex-wrap:wrap; gap:1rem; align-items:center;">' +
       '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">NAME</span><div style="font-weight:700;">' + esc(log.reporter) + '</div></div>' +
       '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">DATE</span><div style="font-weight:600;">' + esc(log.date) + '</div></div>' +
       '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">IN</span><div style="font-weight:600; color:#9ae6b4;">' + esc(log.time) + '</div></div>' +
       '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">OUT</span><div style="font-weight:600; color:' + (log.check_out_time ? '#fc8181' : 'var(--text-muted)') + ';">' + esc(log.check_out_time || '—') + '</div></div>' +
+      '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">DURATION</span><div style="font-weight:600;">' + durationStr + '</div></div>' +
       '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">LOCATION</span><div style="font-weight:600;">' + esc(log.location || '—') + '</div></div>' +
       (log.task_ref ? '<div><span style="font-size:0.7rem; color:var(--text-muted); font-weight:700; letter-spacing:0.5px;">LINKED TO</span><div style="font-weight:600;">📡 ' + esc(log.task_ref) + '</div></div>' : '') +
     '</div>' +
-    (log.note ? '<div style="margin-top:0.5rem; font-size:0.82rem; color:var(--text-muted);">📝 ' + esc(log.note) + '</div>' : '');
+    (venue
+      ? '<div style="margin-top:0.6rem; font-size:0.8rem; color:var(--text-muted);">📍 Venue: <b>' + esc(venue.name) + '</b> · ' + venue.radius + ' m radius</div>'
+      : '') +
+    (log.note ? '<div style="margin-top:0.5rem; font-size:0.82rem; color:var(--text-muted);">📝 ' + esc(log.note) + '</div>' : '') +
+    '<div class="spot-timeline">' +
+      '<div class="spot-timeline-title">Spot-check timeline · ' + okCount + ' verified, ' + missCount + ' missed' + (outCount ? ', ' + outCount + ' outside venue' : '') + '</div>' +
+      timelineHtml +
+    '</div>';
 
   const lat = parseFloat(log.lat);
   const lon = parseFloat(log.lon);
@@ -1942,11 +2476,11 @@ function openGeoMap(log) {
 
 function updateAttendanceStats() {
   const today = Utils.todayLocalISO();
-  const todayCount = attendanceLogs.filter(l => l.date === today).length;
+  const todayCount = attendanceLogs.filter(l => l.date === today && !isSpotCheckRow(l)).length;
   const statToday = document.getElementById('statTodayCount');
   const statTotal = document.getElementById('statTotalCount');
   if (statToday) statToday.innerText = todayCount;
-  if (statTotal) statTotal.innerText = attendanceLogs.length;
+  if (statTotal) statTotal.innerText = attendanceLogs.filter(l => !isSpotCheckRow(l)).length;
 }
 
 function startLiveClock() {
@@ -1974,8 +2508,16 @@ async function reverseGeocodeLabel(lat, lon) {
 async function processCheckIn() {
   const btn = document.getElementById('checkInBtn');
   if (!btn || !currentUser) return;
+
   if (getActiveAttendanceSession()) {
     triggerNotificationToast('You are already checked in. Please check out first.');
+    return;
+  }
+  const cooldown = getCheckInCooldownRemaining();
+  if (cooldown > 0) {
+    const m = Math.floor(Math.ceil(cooldown / 1000) / 60);
+    const s = String(Math.ceil(cooldown / 1000) % 60).padStart(2, '0');
+    triggerNotificationToast('Please wait ' + m + ':' + s + ' before checking in again.');
     return;
   }
 
@@ -1984,8 +2526,7 @@ async function processCheckIn() {
 
   if (!navigator.geolocation) {
     triggerNotificationToast('Geolocation not supported.');
-    btn.disabled = false;
-    btn.innerText = '📍 Check In';
+    updateAttendanceButtons();
     return;
   }
 
@@ -1994,9 +2535,7 @@ async function processCheckIn() {
     const lon = pos.coords.longitude;
     const accuracy = pos.coords.accuracy;
     const now = new Date();
-    const locationLabel = await reverseGeocodeLabel(lat, lon);
-    const noteInput = document.getElementById('attendanceLocationNote');
-    const note = noteInput ? noteInput.value.trim() : '';
+
     const taskRefSelect = document.getElementById('attendanceTaskRef');
     const taskRefVal = taskRefSelect ? taskRefSelect.value : '';
     let taskRefTitle = '', taskRefId = '';
@@ -2005,6 +2544,20 @@ async function processCheckIn() {
       taskRefId = parts[0] || '';
       taskRefTitle = parts[1] || '';
     }
+    const linkedDep = taskRefId ? deployments.find(d => String(d.id) === String(taskRefId)) : null;
+    const venue = linkedDep ? getVenueForDeployment(linkedDep) : null;
+    if (venue) {
+      const fence = geofenceCheck(venue, lat, lon);
+      if (!fence.ok) {
+        triggerNotificationToast('❌ You are ' + Math.round(fence.dist) + ' m from "' + venue.name + '". Must be within ' + venue.radius + ' m.');
+        updateAttendanceButtons();
+        return;
+      }
+    }
+
+    const locationLabel = await reverseGeocodeLabel(lat, lon);
+    const noteInput = document.getElementById('attendanceLocationNote');
+    const note = noteInput ? noteInput.value.trim() : '';
 
     const entry = {
       id: 'pending',
@@ -2020,7 +2573,9 @@ async function processCheckIn() {
       timestamp: now.toISOString(),
       check_out_time: '', check_out_lat: '', check_out_lon: '', check_out_timestamp: '',
       task_ref: taskRefTitle,
-      task_ref_id: taskRefId
+      task_ref_id: taskRefId,
+      check_type: 'CHECK_IN',
+      session_ref: null
     };
 
     if (supabaseClient) {
@@ -2029,14 +2584,14 @@ async function processCheckIn() {
           reporter: entry.reporter, role: entry.role, date: entry.date, time: entry.time,
           lat: parseFloat(entry.lat), lon: parseFloat(entry.lon), accuracy: entry.accuracy,
           location: entry.location, note: entry.note, timestamp_iso: entry.timestamp,
-          task_ref: entry.task_ref, task_ref_id: entry.task_ref_id
+          task_ref: entry.task_ref, task_ref_id: entry.task_ref_id,
+          check_type: 'CHECK_IN'
         }).select().single();
         if (error) throw error;
         if (data && data.id) entry.id = 'remote-' + data.id;
       } catch (err) {
         triggerNotificationToast('Backend error: ' + err.message);
-        btn.disabled = false;
-        btn.innerText = '📍 Check In';
+        updateAttendanceButtons();
         return;
       }
     }
@@ -2046,12 +2601,16 @@ async function processCheckIn() {
     renderAttendanceTable();
     updateAttendanceStats();
     updateAttendanceButtons();
+    if (noteInput) noteInput.value = '';
+
+    ensureSpotScheduleForSession(entry);
+    startSpotCheckScheduler();
+
     triggerNotificationToast('✓ Checked in at ' + entry.time);
   }, () => {
-    btn.disabled = false;
-    btn.innerText = '📍 Check In';
+    updateAttendanceButtons();
     triggerNotificationToast('Location access denied.');
-  }, { enableHighAccuracy: true, timeout: 12000 });
+  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
 }
 
 async function processCheckOut() {
@@ -2065,8 +2624,7 @@ async function processCheckOut() {
 
   if (!navigator.geolocation) {
     triggerNotificationToast('Geolocation not supported.');
-    btn.disabled = false;
-    btn.innerText = '🚪 Check Out';
+    updateAttendanceButtons();
     return;
   }
 
@@ -2074,6 +2632,17 @@ async function processCheckOut() {
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
     const now = new Date();
+
+    const venue = getVenueForSession(activeSession);
+    if (venue) {
+      const fence = geofenceCheck(venue, lat, lon);
+      if (!fence.ok) {
+        triggerNotificationToast('❌ You are ' + Math.round(fence.dist) + ' m from "' + venue.name + '". Must check out within ' + venue.radius + ' m.');
+        updateAttendanceButtons();
+        return;
+      }
+    }
+
     const updates = {
       check_out_time: Utils.fmtTime(now),
       check_out_lat: lat.toFixed(6),
@@ -2089,24 +2658,26 @@ async function processCheckOut() {
           if (error) throw error;
         } catch (err) {
           triggerNotificationToast('Backend error: ' + err.message);
-          btn.disabled = false;
-          btn.innerText = '🚪 Check Out';
+          updateAttendanceButtons();
           return;
         }
       }
     }
 
     Object.assign(activeSession, updates);
+    stopSpotCheckScheduler();
     flushCachedCollections();
     renderAttendanceTable();
     updateAttendanceStats();
     updateAttendanceButtons();
-    triggerNotificationToast('✓ Checked out at ' + updates.check_out_time);
+
+    const since = activeSession.timestamp ? new Date(activeSession.timestamp).getTime() : null;
+    const durMsg = since ? ' — session ' + formatDuration(Date.now() - since) : '';
+    triggerNotificationToast('✓ Checked out at ' + updates.check_out_time + durMsg);
   }, () => {
-    btn.disabled = false;
-    btn.innerText = '🚪 Check Out';
+    updateAttendanceButtons();
     triggerNotificationToast('Location access denied.');
-  }, { enableHighAccuracy: true, timeout: 12000 });
+  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
 }
 
 function initAttendancePage() {
@@ -2115,6 +2686,12 @@ function initAttendancePage() {
   renderAttendanceTable();
   updateAttendanceStats();
   updateAttendanceButtons();
+
+  const session = getActiveAttendanceSession();
+  if (session) {
+    ensureSpotScheduleForSession(session);
+    startSpotCheckScheduler();
+  }
 }
 
 async function clearAttendanceLog() {
@@ -2127,6 +2704,7 @@ async function clearAttendanceLog() {
     } catch (err) { triggerNotificationToast('Backend error: ' + err.message); return; }
   }
   attendanceLogs = [];
+  stopSpotCheckScheduler();
   await logAudit('clear_attendance', 'attendance', '', 'All records', 'Wiped');
   flushCachedCollections();
   renderAttendanceTable();
@@ -2275,13 +2853,55 @@ function generateActivitySummaryGrid() {
     container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No summaries generated.</div>';
     return;
   }
+  const canManage = isPrivileged();
   activitySummaries.forEach(r => {
     const card = document.createElement('div');
     card.className = 'card';
-    card.innerHTML = '<div class="card-title">' + esc(r.title || 'Summary') + '</div>' +
-      '<div style="font-size:0.82rem;color:var(--text-muted);white-space:pre-line;line-height:1.6;">' + esc(r.summary || '') + '</div>';
+    card.innerHTML =
+      '<div class="card-title">' + esc(r.title || 'Summary') + '</div>' +
+      '<div style="font-size:0.82rem;color:var(--text-muted);white-space:pre-line;line-height:1.6;">' + esc(r.summary || '') + '</div>' +
+      '<div class="card-action-row">' +
+        '<button class="card-action-btn" data-sum-export="' + esc(r.id) + '" type="button">⬇ Export</button>' +
+        (canManage ? '<button class="card-action-btn delete-btn" data-sum-delete="' + esc(r.id) + '" type="button">🗑 Delete</button>' : '') +
+      '</div>';
     container.appendChild(card);
   });
+  container.querySelectorAll('[data-sum-export]').forEach(btn =>
+    btn.addEventListener('click', () => exportActivitySummary(btn.dataset.sumExport)));
+  container.querySelectorAll('[data-sum-delete]').forEach(btn =>
+    btn.addEventListener('click', () => deleteActivitySummary(btn.dataset.sumDelete)));
+}
+
+function exportActivitySummary(summaryId) {
+  const idIsNum = !isNaN(parseInt(summaryId, 10));
+  const id = idIsNum ? parseInt(summaryId, 10) : summaryId;
+  const s = activitySummaries.find(x => x.id === id || String(x.id) === String(summaryId));
+  if (!s) { triggerNotificationToast('Summary not found.'); return; }
+
+  const rows = [
+    ['Title', s.title || ''],
+    ['Generated By', s.generatedBy || ''],
+    ['Timestamp', s.timestamp || ''],
+    ['']
+  ];
+  String(s.summary || '').split('\n').forEach(line => rows.push([line]));
+
+  downloadCSV('jcompass-summary-' + Utils.todayLocalISO() + '.csv', rows);
+  triggerNotificationToast('✓ Summary exported.');
+}
+
+async function deleteActivitySummary(summaryId) {
+  if (!isPrivileged()) { triggerNotificationToast('Admin access required.'); return; }
+  const idIsNum = !isNaN(parseInt(summaryId, 10));
+  const id = idIsNum ? parseInt(summaryId, 10) : summaryId;
+  const idx = activitySummaries.findIndex(x => x.id === id || String(x.id) === String(summaryId));
+  if (idx < 0) return;
+  if (!confirm('Delete this summary?')) return;
+  const [removed] = activitySummaries.splice(idx, 1);
+  await logAudit('delete_summary', 'summary', removed.id, removed.title || 'Summary', 'Deleted');
+  generateActivitySummaryGrid();
+  injectAdminClearButtons();
+  triggerNotificationToast('✓ Summary deleted.');
 }
 
 async function clearActivitySummaries() {
@@ -2307,7 +2927,7 @@ function generateActivitySummaryReport() {
   });
   const staffCount = registeredUsersDB.filter(u => u.role === 'STAFF').length;
   const adminCount = registeredUsersDB.filter(u => u.role === 'ADMIN').length;
-  const todayCheckins = attendanceLogs.filter(l => l.date === todayStr);
+  const todayCheckins = attendanceLogs.filter(l => l.date === todayStr && !isSpotCheckRow(l));
   const activeDeployments = deployments.filter(d => !d.archived).length;
   const pendingAssignments = assignments.filter(a => !a.archived && a.status === 'PENDING').length;
   const submittedAssignments = assignments.filter(a => !a.archived && a.status === 'SUBMITTED').length;
@@ -2328,6 +2948,7 @@ function generateActivitySummaryReport() {
     timestamp: now.toISOString()
   });
   generateActivitySummaryGrid();
+  injectAdminClearButtons();
   triggerNotificationToast('✓ Summary generated.');
 }
 
@@ -2515,7 +3136,6 @@ function renderAuditLogTable() {
     return;
   }
 
-  // ── Group by day (using created_at timestamp) ────────────────────
   const groups = new Map();
   subset.slice(0, 200).forEach(e => {
     let dayKey = 'unknown';
@@ -2555,7 +3175,6 @@ function renderAuditLogTable() {
   sortedDates.forEach(dateKey => {
     const rows = groups.get(dateKey);
 
-    // Separator
     const separator = document.createElement('tr');
     separator.className = 'activity-day-separator';
     let dayLabel;
@@ -2576,7 +3195,6 @@ function renderAuditLogTable() {
       '</td>';
     tbody.appendChild(separator);
 
-    // Entries
     rows.forEach(e => {
       const tr = document.createElement('tr');
       tr.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
@@ -2627,18 +3245,122 @@ function exportProjectsCSV() {
 }
 
 function exportAttendanceCSV() {
-  if (attendanceLogs.length === 0) { triggerNotificationToast('No attendance data.'); return; }
-  const rows = [['Reporter','Role','Date','CheckIn','CheckOut','Latitude','Longitude','Accuracy','Location','LinkedTo','Note']];
-  attendanceLogs.forEach(l => rows.push([
-    l.reporter, l.role, l.date, l.time, l.check_out_time || '',
-    l.lat, l.lon, l.accuracy, l.location, l.task_ref || '', l.note || ''
-  ]));
+  const rowsIn = attendanceLogs.filter(l => !isSpotCheckRow(l));
+  if (rowsIn.length === 0) { triggerNotificationToast('No attendance data.'); return; }
+  const rows = [['Reporter','Role','Date','CheckIn','CheckOut','Duration','Verified Checks','Missed','Outside Venue','Latitude','Longitude','Accuracy','Location','LinkedTo','Note']];
+  rowsIn.forEach(l => {
+    let dur = '';
+    if (l.timestamp && l.check_out_timestamp) {
+      dur = formatDuration(new Date(l.check_out_timestamp) - new Date(l.timestamp));
+    } else if (l.timestamp) {
+      dur = formatDuration(Date.now() - new Date(l.timestamp).getTime()) + ' (live)';
+    }
+    const checks = getSpotChecksForSession(l.id);
+    const ok    = checks.filter(s => s.note !== 'MISSED' && s.note !== 'OUTSIDE_VENUE').length;
+    const miss  = checks.filter(s => s.note === 'MISSED').length;
+    const out   = checks.filter(s => s.note === 'OUTSIDE_VENUE').length;
+    rows.push([
+      l.reporter, l.role, l.date, l.time, l.check_out_time || '',
+      dur, ok, miss, out,
+      l.lat, l.lon, l.accuracy, l.location, l.task_ref || '', l.note || ''
+    ]);
+  });
   downloadCSV('jcompass-attendance-' + Utils.todayLocalISO() + '.csv', rows);
-  triggerNotificationToast('Exported ' + attendanceLogs.length + ' records.');
+  triggerNotificationToast('Exported ' + rowsIn.length + ' records.');
+}
+
+function exportAllReportsCSV() {
+  const rows = [];
+  const push = (...r) => rows.push(r);
+  const section = (name) => { rows.push([]); rows.push(['=== ' + name + ' ===']); };
+
+  const activeProjects = projects.filter(p => !p.archived);
+  if (activeProjects.length) {
+    section('PROJECTS (' + activeProjects.length + ')');
+    push('ID','Title','Category','Deadline','Status','Priority','Progress','Reporter','Tags','Notes');
+    activeProjects.forEach(p => push(
+      p.id, p.title, p.category, p.deadline, p.status, p.priority,
+      (p.progress || 0) + '%', p.reporter || '', p.tags || '', p.notes || ''
+    ));
+  }
+
+  const asgs = assignments.filter(a => !a.archived);
+  if (asgs.length) {
+    section('ASSIGNMENTS (' + asgs.length + ')');
+    push('ID','Title','Assignee(s)','Status','Priority','Due Date','Submitted By','Submitted At','Review Notes');
+    asgs.forEach(a => push(
+      a.id, a.title, a.assignee || '', a.status || '', a.priority || '',
+      a.due_date || '', a.submitted_by || '', a.submitted_at || '', a.review_notes || ''
+    ));
+  }
+
+  const deps = deployments.filter(d => !d.archived);
+  if (deps.length) {
+    section('FIELD OPERATIONS (' + deps.length + ')');
+    push('ID','Title','Location','Assignee(s)','Priority','Status','Venue','Venue Radius (m)','Created By');
+    deps.forEach(d => push(
+      d.id, d.title, d.location || '', d.reporter || '',
+      d.priority || '', d.status || '',
+      d.venue_name || '', d.venue_radius || '', d.createdBy || ''
+    ));
+  }
+
+  if (events.length) {
+    section('EVENTS (' + events.length + ')');
+    push('ID','Name','Date','Completed');
+    events.forEach(e => push(e.id, e.name, e.date || '', e.completed ? 'Yes' : 'No'));
+  }
+
+  const attendRows = attendanceLogs.filter(l => !isSpotCheckRow(l));
+  if (attendRows.length) {
+    section('ATTENDANCE (' + attendRows.length + ')');
+    push('Reporter','Role','Date','Check-In','Check-Out','Duration','Verified Checks','Missed','Outside Venue','Latitude','Longitude','Location','Linked To','Note');
+    attendRows.forEach(l => {
+      let dur = '';
+      if (l.timestamp && l.check_out_timestamp) {
+        dur = formatDuration(new Date(l.check_out_timestamp) - new Date(l.timestamp));
+      } else if (l.timestamp) {
+        dur = formatDuration(Date.now() - new Date(l.timestamp).getTime()) + ' (live)';
+      }
+      const checks = getSpotChecksForSession(l.id);
+      const ok    = checks.filter(s => s.note !== 'MISSED' && s.note !== 'OUTSIDE_VENUE').length;
+      const miss  = checks.filter(s => s.note === 'MISSED').length;
+      const out   = checks.filter(s => s.note === 'OUTSIDE_VENUE').length;
+      push(
+        l.reporter, l.role, l.date, l.time, l.check_out_time || '', dur,
+        ok, miss, out,
+        l.lat, l.lon, l.location || '', l.task_ref || '', l.note || ''
+      );
+    });
+  }
+
+  const spotRows = attendanceLogs.filter(l => isSpotCheckRow(l));
+  if (spotRows.length) {
+    section('SPOT CHECKS (' + spotRows.length + ')');
+    push('Reporter','Date','Time','Status','Location','Session Ref');
+    spotRows.forEach(s => push(
+      s.reporter, s.date, s.time,
+      s.note === 'MISSED' ? 'MISSED' : s.note === 'OUTSIDE_VENUE' ? 'OUTSIDE VENUE' : 'VERIFIED',
+      s.location || '', s.session_ref || ''
+    ));
+  }
+
+  if (archiveRequests.length) {
+    section('ARCHIVE REQUESTS (' + archiveRequests.length + ')');
+    push('ID','Project','Requester','Date','Status');
+    archiveRequests.forEach(r => push(
+      r.id, r.project_title || '', r.requester || '',
+      r.request_timestamp || '', r.status || ''
+    ));
+  }
+
+  if (rows.length === 0) { triggerNotificationToast('Nothing to export.'); return; }
+  downloadCSV('jcompass-all-reports-' + Utils.todayLocalISO() + '.csv', rows);
+  triggerNotificationToast('✓ All reports exported.');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   SECTION 25: NOTIFICATION BAR (with overdue "Review" action)
+   SECTION 25: NOTIFICATION BAR
    ═══════════════════════════════════════════════════════════════════════ */
 
 function dismissNotice(noticeId) {
@@ -2819,8 +3541,6 @@ async function setOneSignalUser(userName) {
       try {
         await OneSignal.login(userName);
         console.log('[JCompass] OneSignal user tagged:', userName);
-
-        // Also opt in to push explicitly (some browsers need this after login)
         try { await OneSignal.User.PushSubscription.optIn(); } catch {}
       } catch (e) {
         console.warn('[JCompass] OneSignal.login failed, retrying…', e);
@@ -2846,317 +3566,370 @@ function initSupabaseClient() {
 
 function initializeApp() {
   try {
-  wipeLegacyCache();
-  initSupabaseClient();
-  initTheme();
-  wireControlTray();
+    wipeLegacyCache();
+    initSupabaseClient();
+    initTheme();
+    wireControlTray();
 
-  if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
-    try {
-      const OneSignal = window.Capacitor.Plugins?.OneSignal || window.plugins?.OneSignal;
-      if (OneSignal) {
-        OneSignal.initialize(CONFIG.ONESIGNAL_APP_ID);
-        OneSignal.Notifications.requestPermission(true).then(accepted =>
-          console.log('OneSignal permission:', accepted));
-      }
-    } catch (e) { console.warn('OneSignal init skipped:', e); }
-  }
-
-  enforceSessionGuard();
-
-  document.querySelectorAll('.nav-item').forEach(nav => {
-    nav.addEventListener('click', () => {
-      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-      nav.classList.add('active');
-      const target = nav.getAttribute('data-page');
-      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-      document.getElementById('page-' + target)?.classList.add('active');
-      const bc = document.getElementById('breadcrumbCurrent');
-      if (bc && nav.querySelector('.nav-label')) bc.innerText = nav.querySelector('.nav-label').innerText;
-      if (target === 'attend') initAttendancePage();
-      if (target === 'calendar') generateDeadlineCalendarGrid();
-      if (target === 'archive') renderArchiveRequestsPanel();
-      if (target === 'audit') renderAuditLogTable();
-    });
-  });
-
-  const sidebarEl = document.getElementById('sidebar');
-  document.getElementById('menuToggle')?.addEventListener('click', () => sidebarEl?.classList.toggle('active'));
-  document.getElementById('sidebarCloseBtn')?.addEventListener('click', () => sidebarEl?.classList.remove('active'));
-  document.addEventListener('click', (e) => {
-    if (window.innerWidth > 992 || !sidebarEl || !sidebarEl.classList.contains('active')) return;
-    if (!e.target.closest('.nav-item')) return;
-    sidebarEl.classList.remove('active');
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && sidebarEl) sidebarEl.classList.remove('active');
-  });
-  window.addEventListener('resize', () => {
-    if (window.innerWidth > 992 && sidebarEl) sidebarEl.classList.remove('active');
-  });
-
-  document.getElementById('signOutBtn')?.addEventListener('click', () => {
-    Session.logout();
-    Utils.store.del('jcompass_user');
-    window.location.replace(CONFIG.LOGIN_PAGE);
-  });
-
-  document.getElementById('submitAnnouncementBtn')?.addEventListener('click', () => {
-    const input = document.getElementById('announceTextInput');
-    const target = document.getElementById('announcePingTarget');
-    if (!input || !input.value.trim() || !currentUser) return;
-    dispatchPing(currentUser.name, target.value, input.value.trim());
-    input.value = '';
-  });
-
-  document.getElementById('checkInBtn')?.addEventListener('click', processCheckIn);
-  document.getElementById('checkOutBtn')?.addEventListener('click', processCheckOut);
-  document.getElementById('clearAttendanceBtn')?.addEventListener('click', clearAttendanceLog);
-  document.getElementById('exportAttendanceBtn')?.addEventListener('click', exportAttendanceCSV);
-  document.getElementById('quickExportCSVBtn')?.addEventListener('click', exportProjectsCSV);
-
-  document.getElementById('createProjectBtn')?.addEventListener('click', async () => {
-    const title = document.getElementById('newTitle').value.trim();
-    const category = document.getElementById('newCategory').value;
-    const deadline = document.getElementById('newDeadline').value || Utils.todayLocalISO();
-    if (!title) return;
-    const payload = {
-      title, category, deadline, status: 'ACTIVE', priority: 'MEDIUM',
-      progress: 0, reporter: currentUser.name, notes: '', tags: '', archived: false,
-      created_by: currentUser.name
-    };
-    if (supabaseClient) {
+    if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
       try {
-        const { data, error } = await supabaseClient.from('projects').insert(payload).select().single();
-        if (error) throw error;
-        if (data) payload.id = data.id;
-      } catch (err) { triggerNotificationToast('Backend error: ' + err.message); return; }
-    } else { payload.id = Date.now(); }
-    projects.push({ ...payload, created_at: new Date().toISOString() });
-    await logAudit('create_project', 'project', payload.id, title, 'Category: ' + category + ', Due: ' + deadline);
-    flushCachedCollections();
-    rebuildApplicationDOMViews();
-    document.getElementById('newProjectModal').classList.remove('active');
-    document.getElementById('newTitle').value = '';
-    triggerNotificationToast('Project created.');
-  });
-
-  document.getElementById('saveUserBtn')?.addEventListener('click', createNewUser);
-
-  /* Delegated handlers */
-  document.addEventListener('click', (e) => {
-    const beatBtn = e.target.closest('#addBeatBtn');
-    if (beatBtn) { e.preventDefault(); e.stopPropagation(); openDeploymentModal(); return; }
-    const asgBtn = e.target.closest('#addAssignmentBtn');
-    if (asgBtn) { e.preventDefault(); e.stopPropagation(); openAssignmentModal(); return; }
-  });
-
-  document.addEventListener('input', (e) => {
-    if (!e.target) return;
-    if (e.target.id === 'reporterSearchInput') populateReporterCheckboxes();
-    if (e.target.id === 'assigneeSearchInput') populateAssigneeCheckboxes();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' || !e.target) return;
-    if (e.target.id === 'reporterSearchInput') { e.preventDefault(); populateReporterCheckboxes(); }
-    if (e.target.id === 'assigneeSearchInput') { e.preventDefault(); populateAssigneeCheckboxes(); }
-  });
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-search-trigger]');
-    if (!btn) return;
-    const which = btn.dataset.searchTrigger;
-    if (which === 'reporter') populateReporterCheckboxes();
-    if (which === 'assignee') populateAssigneeCheckboxes();
-  });
-
-  document.getElementById('calPrevMonth')?.addEventListener('click', () => {
-    calendarMonth--; if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
-    generateDeadlineCalendarGrid();
-  });
-  document.getElementById('calNextMonth')?.addEventListener('click', () => {
-    calendarMonth++; if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
-    generateDeadlineCalendarGrid();
-  });
-
-  document.querySelectorAll('.filter-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      currentFilter = chip.dataset.filter || 'ALL';
-      generateProjectDashboard();
-    });
-  });
-
-  document.getElementById('dashboardSearchInput')?.addEventListener('input', (e) => {
-    searchQuery = e.target.value; generateProjectDashboard();
-  });
-  document.getElementById('sourceSearchInput')?.addEventListener('input', (e) => {
-    sourceSearchQuery = e.target.value; generateSourcesGrid();
-  });
-  document.getElementById('attendanceSearchInput')?.addEventListener('input', (e) => {
-    attendanceSearchQuery = e.target.value; renderAttendanceTable();
-  });
-  document.getElementById('auditSearchInput')?.addEventListener('input', (e) => {
-    auditSearchQuery = e.target.value; renderAuditLogTable();
-  });
-
-  document.getElementById('profileSaveBtn')?.addEventListener('click', saveProjectProfile);
-
-  document.getElementById('profileProgressInput')?.addEventListener('input', (e) => {
-    const v = parseInt(e.target.value, 10) || 0;
-    const bar = document.getElementById('profileProgressBar');
-    const label = document.getElementById('profileProgressLabel');
-    if (bar) bar.style.width = v + '%';
-    if (label) label.innerText = v + '%';
-  });
-
-  const projectModal = document.getElementById('projectProfileModal');
-  if (projectModal) {
-    projectModal.addEventListener('click', async (e) => {
-      const priorityBtn = e.target.closest('.priority-select-btn');
-      if (priorityBtn && !priorityBtn.disabled) {
-        e.preventDefault(); e.stopPropagation();
-        document.querySelectorAll('.priority-select-btn').forEach(b => b.classList.remove('active'));
-        priorityBtn.classList.add('active');
-        return;
-      }
-      const archiveBtn = e.target.closest('#profileArchiveBtn');
-      const deleteBtn  = e.target.closest('#profileDeleteBtn');
-      const requestBtn = e.target.closest('#profileRequestArchiveBtn');
-      if (archiveBtn) { e.preventDefault(); e.stopPropagation(); if (activeProfileId != null) await archiveProject(activeProfileId); }
-      if (deleteBtn)  { e.preventDefault(); e.stopPropagation(); if (activeProfileId != null) await deleteProject(activeProfileId); }
-      if (requestBtn) { e.preventDefault(); e.stopPropagation(); if (activeProfileId != null) await submitArchiveRequest(activeProfileId); }
-    });
-  }
-
-  document.querySelectorAll('[data-close]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const m = document.getElementById(btn.getAttribute('data-close'));
-      if (m) m.classList.remove('active');
-    });
-  });
-
-  const modalOpeners = [
-    ['fabBtn', 'newProjectModal'],
-    ['addCalendarProjectBtn', 'newProjectModal'],
-    ['addEventBtn', 'addEventModal'],
-    ['addUserBtn', 'addUserModal'],
-    ['quickAddProjectBtn', 'newProjectModal']
-  ];
-  modalOpeners.forEach(([btnId, modalId]) => {
-    document.getElementById(btnId)?.addEventListener('click', () => {
-      document.getElementById(modalId)?.classList.add('active');
-    });
-  });
-
-  document.getElementById('saveBeatBtn')?.addEventListener('click', async () => {
-    const title = document.getElementById('beatName').value.trim();
-    const priority = document.getElementById('beatPriority').value;
-    const location = document.getElementById('beatLocation').value.trim();
-    const description = document.getElementById('beatDescription').value.trim();
-    const selected = Array.from(document.querySelectorAll('#reporterCheckboxList input[type="checkbox"]:checked')).map(cb => cb.value);
-    if (!title) { triggerNotificationToast('Operation title is required.'); return; }
-    if (selected.length === 0) { triggerNotificationToast('Select at least one member.'); return; }
-
-    const reporterString = selected.join(', ');
-    const payload = {
-      title, description, location, reporter: reporterString, priority,
-      status: 'ACTIVE', image_data: '', created_by: currentUser.name, archived: false
-    };
-    if (supabaseClient) {
-      try {
-        const { data, error } = await supabaseClient.from('deployments').insert(payload).select().single();
-        if (error) throw error;
-        payload.id = data ? data.id : Date.now();
-      } catch (err) { triggerNotificationToast('Backend error: ' + err.message); return; }
-    } else { payload.id = Date.now(); }
-    deployments.push({
-      id: payload.id, title, description, location, reporter: reporterString,
-      priority, status: 'ACTIVE', imageData: '', createdBy: currentUser.name,
-      archived: false, created_at: new Date().toISOString()
-    });
-    await logAudit('create_deployment', 'deployment', payload.id, title, 'Deployed ' + selected.length + ' member(s): ' + reporterString);
-    for (const reporter of selected) {
-      await dispatchPing(currentUser.name, reporter, '📡 You have been deployed: "' + title + '" at ' + (location || 'Location TBD'));
+        const OneSignal = window.Capacitor.Plugins?.OneSignal || window.plugins?.OneSignal;
+        if (OneSignal) {
+          OneSignal.initialize(CONFIG.ONESIGNAL_APP_ID);
+          OneSignal.Notifications.requestPermission(true).then(accepted =>
+            console.log('OneSignal permission:', accepted));
+        }
+      } catch (e) { console.warn('OneSignal init skipped:', e); }
     }
-    flushCachedCollections();
-    generateDeploymentsGrid();
-    populateAttendanceTaskRefs();
-    document.getElementById('addBeatModal').classList.remove('active');
-    document.getElementById('beatName').value = '';
-    document.getElementById('beatLocation').value = '';
-    document.getElementById('beatDescription').value = '';
-    reporterSelection.clear();
-    const rSearch = document.getElementById('reporterSearchInput');
-    if (rSearch) rSearch.value = '';
-    triggerNotificationToast('✓ Deployed. Notified ' + selected.length + ' member(s).');
-  });
 
-  document.getElementById('saveAssignmentBtn')?.addEventListener('click', async () => {
-    const title = document.getElementById('asgTitle').value.trim();
-    const selectedBoxes = Array.from(document.querySelectorAll('#assigneeRadioList input[type="checkbox"]:checked')).map(cb => cb.value);
-    if (!title) { triggerNotificationToast('Task description is required.'); return; }
-    if (selectedBoxes.length === 0) { triggerNotificationToast('Please select at least one assignee.'); return; }
+    enforceSessionGuard();
 
-    const assigneeString = selectedBoxes.join(', ');
-    const payload = {
-      title, assignee: assigneeString, description: '', priority: 'MEDIUM', due_date: null,
-      created_by: currentUser.name, status: 'PENDING', archived: false
-    };
-    if (supabaseClient) {
-      try {
-        const { data, error } = await supabaseClient.from('assignments').insert(payload).select().single();
-        if (error) throw error;
-        payload.id = data ? data.id : Date.now();
-      } catch (err) { triggerNotificationToast('Backend error: ' + err.message); return; }
-    } else { payload.id = Date.now(); }
-
-    assignments.unshift({
-      id: payload.id, ...payload,
-      submission_text: '', submission_file: '', submitted_by: '', submitted_at: null,
-      reviewed_by: '', reviewed_at: null, review_notes: '',
-      created_at: new Date().toISOString()
+    document.querySelectorAll('.nav-item').forEach(nav => {
+      nav.addEventListener('click', () => {
+        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        nav.classList.add('active');
+        const target = nav.getAttribute('data-page');
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById('page-' + target)?.classList.add('active');
+        const bc = document.getElementById('breadcrumbCurrent');
+        if (bc && nav.querySelector('.nav-label')) bc.innerText = nav.querySelector('.nav-label').innerText;
+        if (target === 'attend') initAttendancePage();
+        if (target === 'calendar') generateDeadlineCalendarGrid();
+        if (target === 'archive') renderArchiveRequestsPanel();
+        if (target === 'audit') renderAuditLogTable();
+      });
     });
-    await logAudit('create_assignment', 'assignment', payload.id, title,
-      'Assigned to ' + selectedBoxes.length + ' member(s): ' + assigneeString);
-    for (const person of selectedBoxes) {
-      await dispatchPing(currentUser.name, person, '🔔 New task assigned to you: "' + title + '"');
+
+    const sidebarEl = document.getElementById('sidebar');
+    document.getElementById('menuToggle')?.addEventListener('click', () => sidebarEl?.classList.toggle('active'));
+    document.getElementById('sidebarCloseBtn')?.addEventListener('click', () => sidebarEl?.classList.remove('active'));
+    document.addEventListener('click', (e) => {
+      if (window.innerWidth > 992 || !sidebarEl || !sidebarEl.classList.contains('active')) return;
+      if (!e.target.closest('.nav-item')) return;
+      sidebarEl.classList.remove('active');
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && sidebarEl) sidebarEl.classList.remove('active');
+    });
+    window.addEventListener('resize', () => {
+      if (window.innerWidth > 992 && sidebarEl) sidebarEl.classList.remove('active');
+    });
+
+    document.getElementById('signOutBtn')?.addEventListener('click', () => {
+      stopAttendanceTicker();
+      stopSpotCheckScheduler();
+      Session.logout();
+      Utils.store.del('jcompass_user');
+      window.location.replace(CONFIG.LOGIN_PAGE);
+    });
+
+    document.getElementById('submitAnnouncementBtn')?.addEventListener('click', () => {
+      const input = document.getElementById('announceTextInput');
+      const target = document.getElementById('announcePingTarget');
+      if (!input || !input.value.trim() || !currentUser) return;
+      dispatchPing(currentUser.name, target.value, input.value.trim());
+      input.value = '';
+    });
+
+    document.getElementById('checkInBtn')?.addEventListener('click', processCheckIn);
+    document.getElementById('checkOutBtn')?.addEventListener('click', processCheckOut);
+    document.getElementById('clearAttendanceBtn')?.addEventListener('click', clearAttendanceLog);
+    document.getElementById('exportAttendanceBtn')?.addEventListener('click', exportAttendanceCSV);
+    document.getElementById('quickExportCSVBtn')?.addEventListener('click', exportProjectsCSV);
+    document.getElementById('quickExportAllBtn')?.addEventListener('click', exportAllReportsCSV);
+
+    document.getElementById('trayUserMgmtBtn')?.addEventListener('click', () => {
+      document.getElementById('controlTray')?.classList.remove('active');
+      document.getElementById('controlTrayOverlay')?.classList.remove('active');
+      document.querySelector('.nav-item[data-page="users"]')?.click();
+    });
+
+    document.getElementById('createProjectBtn')?.addEventListener('click', async () => {
+      const title = document.getElementById('newTitle').value.trim();
+      const category = document.getElementById('newCategory').value;
+      const deadline = document.getElementById('newDeadline').value || Utils.todayLocalISO();
+      if (!title) return;
+      const payload = {
+        title, category, deadline, status: 'ACTIVE', priority: 'MEDIUM',
+        progress: 0, reporter: currentUser.name, notes: '', tags: '', archived: false,
+        created_by: currentUser.name
+      };
+      if (supabaseClient) {
+        try {
+          const { data, error } = await supabaseClient.from('projects').insert(payload).select().single();
+          if (error) throw error;
+          if (data) payload.id = data.id;
+        } catch (err) { triggerNotificationToast('Backend error: ' + err.message); return; }
+      } else { payload.id = Date.now(); }
+      projects.push({ ...payload, created_at: new Date().toISOString() });
+      await logAudit('create_project', 'project', payload.id, title, 'Category: ' + category + ', Due: ' + deadline);
+      flushCachedCollections();
+      rebuildApplicationDOMViews();
+      document.getElementById('newProjectModal').classList.remove('active');
+      document.getElementById('newTitle').value = '';
+      triggerNotificationToast('Project created.');
+    });
+
+    document.getElementById('saveUserBtn')?.addEventListener('click', createNewUser);
+
+    document.addEventListener('click', (e) => {
+      const beatBtn = e.target.closest('#addBeatBtn');
+      if (beatBtn) { e.preventDefault(); e.stopPropagation(); openDeploymentModal(); return; }
+      const asgBtn = e.target.closest('#addAssignmentBtn');
+      if (asgBtn) { e.preventDefault(); e.stopPropagation(); openAssignmentModal(); return; }
+    });
+
+    document.addEventListener('input', (e) => {
+      if (!e.target) return;
+      if (e.target.id === 'reporterSearchInput') populateReporterCheckboxes();
+      if (e.target.id === 'assigneeSearchInput') populateAssigneeCheckboxes();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || !e.target) return;
+      if (e.target.id === 'reporterSearchInput') { e.preventDefault(); populateReporterCheckboxes(); }
+      if (e.target.id === 'assigneeSearchInput') { e.preventDefault(); populateAssigneeCheckboxes(); }
+    });
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-search-trigger]');
+      if (!btn) return;
+      const which = btn.dataset.searchTrigger;
+      if (which === 'reporter') populateReporterCheckboxes();
+      if (which === 'assignee') populateAssigneeCheckboxes();
+    });
+
+    document.getElementById('calPrevMonth')?.addEventListener('click', () => {
+      calendarMonth--; if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
+      generateDeadlineCalendarGrid();
+    });
+    document.getElementById('calNextMonth')?.addEventListener('click', () => {
+      calendarMonth++; if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+      generateDeadlineCalendarGrid();
+    });
+
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        currentFilter = chip.dataset.filter || 'ALL';
+        generateProjectDashboard();
+      });
+    });
+
+    document.getElementById('dashboardSearchInput')?.addEventListener('input', (e) => {
+      searchQuery = e.target.value; generateProjectDashboard();
+    });
+    document.getElementById('sourceSearchInput')?.addEventListener('input', (e) => {
+      sourceSearchQuery = e.target.value; generateSourcesGrid();
+    });
+    document.getElementById('attendanceSearchInput')?.addEventListener('input', (e) => {
+      attendanceSearchQuery = e.target.value; renderAttendanceTable();
+    });
+    document.getElementById('auditSearchInput')?.addEventListener('input', (e) => {
+      auditSearchQuery = e.target.value; renderAuditLogTable();
+    });
+
+    document.getElementById('profileSaveBtn')?.addEventListener('click', saveProjectProfile);
+
+    document.getElementById('profileProgressInput')?.addEventListener('input', (e) => {
+      const v = parseInt(e.target.value, 10) || 0;
+      const bar = document.getElementById('profileProgressBar');
+      const label = document.getElementById('profileProgressLabel');
+      if (bar) bar.style.width = v + '%';
+      if (label) label.innerText = v + '%';
+    });
+
+    const projectModal = document.getElementById('projectProfileModal');
+    if (projectModal) {
+      projectModal.addEventListener('click', async (e) => {
+        const priorityBtn = e.target.closest('.priority-select-btn');
+        if (priorityBtn && !priorityBtn.disabled) {
+          e.preventDefault(); e.stopPropagation();
+          document.querySelectorAll('.priority-select-btn').forEach(b => b.classList.remove('active'));
+          priorityBtn.classList.add('active');
+          return;
+        }
+        const archiveBtn = e.target.closest('#profileArchiveBtn');
+        const deleteBtn  = e.target.closest('#profileDeleteBtn');
+        const requestBtn = e.target.closest('#profileRequestArchiveBtn');
+        if (archiveBtn) { e.preventDefault(); e.stopPropagation(); if (activeProfileId != null) await archiveProject(activeProfileId); }
+        if (deleteBtn)  { e.preventDefault(); e.stopPropagation(); if (activeProfileId != null) await deleteProject(activeProfileId); }
+        if (requestBtn) { e.preventDefault(); e.stopPropagation(); if (activeProfileId != null) await submitArchiveRequest(activeProfileId); }
+      });
     }
-    flushCachedCollections();
-    generateAssignmentsGrid();
-    document.getElementById('addAssignmentModal').classList.remove('active');
-    document.getElementById('asgTitle').value = '';
-    assigneeSelection.clear();
-    const aSearch = document.getElementById('assigneeSearchInput');
-    if (aSearch) aSearch.value = '';
-    triggerNotificationToast('✓ Task created for ' + selectedBoxes.length + ' member(s).');
-  });
 
-  document.getElementById('saveEventBtn')?.addEventListener('click', async () => {
-    const name = document.getElementById('evtName').value.trim();
-    const date = document.getElementById('evtDate').value || Utils.todayLocalISO();
-    if (!name) return;
-    const payload = { name, date, completed: false };
-    if (supabaseClient) {
-      try {
-        const { data, error } = await supabaseClient.from('events').insert(payload).select().single();
-        if (error) throw error;
-        payload.id = data ? data.id : Date.now();
-      } catch (err) { triggerNotificationToast('Backend error: ' + err.message); return; }
-    } else { payload.id = Date.now(); }
-    events.push(payload);
-    await logAudit('create_event', 'event', payload.id, name, 'Date: ' + date);
-    flushCachedCollections();
-    generateEventsTrackerChecklist();
-    generateDeadlineCalendarGrid();
-    document.getElementById('addEventModal').classList.remove('active');
-    document.getElementById('evtName').value = '';
-    triggerNotificationToast('Event added.');
-  });
+    document.querySelectorAll('[data-close]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const m = document.getElementById(btn.getAttribute('data-close'));
+        if (m) m.classList.remove('active');
+      });
+    });
 
-  document.getElementById('generateActivitySummaryBtn')?.addEventListener('click', generateActivitySummaryReport);
+    const modalOpeners = [
+      ['fabBtn', 'newProjectModal'],
+      ['addCalendarProjectBtn', 'newProjectModal'],
+      ['addEventBtn', 'addEventModal'],
+      ['addUserBtn', 'addUserModal'],
+      ['quickAddProjectBtn', 'newProjectModal']
+    ];
+    modalOpeners.forEach(([btnId, modalId]) => {
+      document.getElementById(btnId)?.addEventListener('click', () => {
+        document.getElementById(modalId)?.classList.add('active');
+      });
+    });
 
-  console.log('✅ JCompass initialized (v6.7)');
+    /* ── New Field Operation ──────────────────────────────────── */
+    document.getElementById('saveBeatBtn')?.addEventListener('click', async () => {
+      const title = document.getElementById('beatName').value.trim();
+      const priority = document.getElementById('beatPriority').value;
+      const location = document.getElementById('beatLocation').value.trim();
+      const description = document.getElementById('beatDescription').value.trim();
+      const selected = Array.from(document.querySelectorAll('#reporterCheckboxList input[type="checkbox"]:checked')).map(cb => cb.value);
+      if (!title) { triggerNotificationToast('Operation title is required.'); return; }
+      if (selected.length === 0) { triggerNotificationToast('Select at least one member.'); return; }
+
+      const reporterString = selected.join(', ');
+
+      const venueName   = document.getElementById('beatVenueName')?.value.trim() || '';
+      const venueLatRaw = document.getElementById('beatVenueLat')?.value.trim() || '';
+      const venueLonRaw = document.getElementById('beatVenueLon')?.value.trim() || '';
+      const venueR      = parseInt(document.getElementById('beatVenueRadius')?.value, 10) || 150;
+      const venueLat    = venueLatRaw ? parseFloat(venueLatRaw) : null;
+      const venueLon    = venueLonRaw ? parseFloat(venueLonRaw) : null;
+      const hasVenue    = isFinite(venueLat) && isFinite(venueLon);
+
+      const payload = {
+        title, description, location, reporter: reporterString, priority,
+        status: 'ACTIVE', image_data: '', created_by: currentUser.name, archived: false,
+        venue_name: hasVenue ? (venueName || title) : null,
+        venue_lat: hasVenue ? venueLat : null,
+        venue_lon: hasVenue ? venueLon : null,
+        venue_radius: hasVenue ? venueR : 150
+      };
+      if (supabaseClient) {
+        try {
+          const { data, error } = await supabaseClient.from('deployments').insert(payload).select().single();
+          if (error) throw error;
+          payload.id = data ? data.id : Date.now();
+        } catch (err) { triggerNotificationToast('Backend error: ' + err.message); return; }
+      } else { payload.id = Date.now(); }
+
+      deployments.push({
+        id: payload.id, title, description, location, reporter: reporterString,
+        priority, status: 'ACTIVE', imageData: '', createdBy: currentUser.name,
+        venue_name: payload.venue_name, venue_lat: payload.venue_lat,
+        venue_lon: payload.venue_lon, venue_radius: payload.venue_radius,
+        archived: false, created_at: new Date().toISOString()
+      });
+      await logAudit('create_deployment', 'deployment', payload.id, title, 'Deployed ' + selected.length + ' member(s): ' + reporterString);
+      for (const reporter of selected) {
+        await dispatchPing(currentUser.name, reporter, '📡 You have been deployed: "' + title + '" at ' + (location || 'Location TBD'));
+      }
+      flushCachedCollections();
+      generateDeploymentsGrid();
+      populateAttendanceTaskRefs();
+      document.getElementById('addBeatModal').classList.remove('active');
+      document.getElementById('beatName').value = '';
+      document.getElementById('beatLocation').value = '';
+      document.getElementById('beatDescription').value = '';
+      reporterSelection.clear();
+      const rSearch = document.getElementById('reporterSearchInput');
+      if (rSearch) rSearch.value = '';
+      ['beatVenueName','beatVenueLat','beatVenueLon'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+      });
+      const rEl = document.getElementById('beatVenueRadius'); if (rEl) rEl.value = '150';
+      triggerNotificationToast('✓ Deployed. Notified ' + selected.length + ' member(s).');
+    });
+
+    /* ── Use my location → capture venue ──────────────────────── */
+    document.getElementById('captureVenueBtn')?.addEventListener('click', () => {
+      if (!navigator.geolocation) { triggerNotificationToast('Geolocation not supported.'); return; }
+      const btn = document.getElementById('captureVenueBtn');
+      const orig = btn.textContent;
+      btn.disabled = true; btn.textContent = '⏳ Locating…';
+      navigator.geolocation.getCurrentPosition((pos) => {
+        document.getElementById('beatVenueLat').value = pos.coords.latitude.toFixed(6);
+        document.getElementById('beatVenueLon').value = pos.coords.longitude.toFixed(6);
+        if (!document.getElementById('beatVenueName').value.trim()) {
+          reverseGeocodeLabel(pos.coords.latitude, pos.coords.longitude)
+            .then(label => {
+              const el = document.getElementById('beatVenueName');
+              if (el && !el.value.trim()) el.value = label;
+            });
+        }
+        btn.disabled = false; btn.textContent = orig;
+        triggerNotificationToast('✓ Venue location captured.');
+      }, () => {
+        btn.disabled = false; btn.textContent = orig;
+        triggerNotificationToast('Location access denied.');
+      }, { enableHighAccuracy: true, timeout: 12000 });
+    });
+
+    document.getElementById('saveAssignmentBtn')?.addEventListener('click', async () => {
+      const title = document.getElementById('asgTitle').value.trim();
+      const selectedBoxes = Array.from(document.querySelectorAll('#assigneeRadioList input[type="checkbox"]:checked')).map(cb => cb.value);
+      if (!title) { triggerNotificationToast('Task description is required.'); return; }
+      if (selectedBoxes.length === 0) { triggerNotificationToast('Please select at least one assignee.'); return; }
+
+      const assigneeString = selectedBoxes.join(', ');
+      const payload = {
+        title, assignee: assigneeString, description: '', priority: 'MEDIUM', due_date: null,
+        created_by: currentUser.name, status: 'PENDING', archived: false
+      };
+      if (supabaseClient) {
+        try {
+          const { data, error } = await supabaseClient.from('assignments').insert(payload).select().single();
+          if (error) throw error;
+          payload.id = data ? data.id : Date.now();
+        } catch (err) { triggerNotificationToast('Backend error: ' + err.message); return; }
+      } else { payload.id = Date.now(); }
+
+      assignments.unshift({
+        id: payload.id, ...payload,
+        submission_text: '', submission_file: '', submitted_by: '', submitted_at: null,
+        reviewed_by: '', reviewed_at: null, review_notes: '',
+        created_at: new Date().toISOString()
+      });
+      await logAudit('create_assignment', 'assignment', payload.id, title,
+        'Assigned to ' + selectedBoxes.length + ' member(s): ' + assigneeString);
+      for (const person of selectedBoxes) {
+        await dispatchPing(currentUser.name, person, '🔔 New task assigned to you: "' + title + '"');
+      }
+      flushCachedCollections();
+      generateAssignmentsGrid();
+      document.getElementById('addAssignmentModal').classList.remove('active');
+      document.getElementById('asgTitle').value = '';
+      assigneeSelection.clear();
+      const aSearch = document.getElementById('assigneeSearchInput');
+      if (aSearch) aSearch.value = '';
+      triggerNotificationToast('✓ Task created for ' + selectedBoxes.length + ' member(s).');
+    });
+
+    document.getElementById('saveEventBtn')?.addEventListener('click', async () => {
+      const name = document.getElementById('evtName').value.trim();
+      const date = document.getElementById('evtDate').value || Utils.todayLocalISO();
+      if (!name) return;
+      const payload = { name, date, completed: false };
+      if (supabaseClient) {
+        try {
+          const { data, error } = await supabaseClient.from('events').insert(payload).select().single();
+          if (error) throw error;
+          payload.id = data ? data.id : Date.now();
+        } catch (err) { triggerNotificationToast('Backend error: ' + err.message); return; }
+      } else { payload.id = Date.now(); }
+      events.push(payload);
+      await logAudit('create_event', 'event', payload.id, name, 'Date: ' + date);
+      flushCachedCollections();
+      generateEventsTrackerChecklist();
+      generateDeadlineCalendarGrid();
+      document.getElementById('addEventModal').classList.remove('active');
+      document.getElementById('evtName').value = '';
+      triggerNotificationToast('Event added.');
+    });
+
+    document.getElementById('generateActivitySummaryBtn')?.addEventListener('click', generateActivitySummaryReport);
+
+    console.log('✅ Sentinel JCompass initialized (v7.1)');
   } catch (err) {
     console.error('❌ JCompass initializeApp error:', err);
     console.error(err && err.stack);
@@ -3189,6 +3962,8 @@ document.addEventListener('visibilitychange', async () => {
   try {
     await syncAllDataFromSupabase();
     rebuildApplicationDOMViews();
+    const sess = getActiveAttendanceSession();
+    if (sess) { ensureSpotScheduleForSession(sess); startSpotCheckScheduler(); }
   } catch (e) { console.warn('Catch-up sync failed:', e); }
 });
 
@@ -3196,3 +3971,6 @@ window.generateDashboardStats = generateDashboardStats;
 window.generateProjectDashboard = generateProjectDashboard;
 window.generateAnnouncementsStream = generateAnnouncementsStream;
 window.rebuildApplicationDOMViews = rebuildApplicationDOMViews;
+
+window.JC = window.JC || {};
+window.JC.getAnnouncements = () => announcements.slice();

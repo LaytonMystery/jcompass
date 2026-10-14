@@ -1,9 +1,9 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Dashboard DOM Builder v6.8
+ *  Sentinel JCompass — Dashboard DOM Builder v6.9
  *  · Multi-assignee tasks
  *  · Search bars in both pickers
- *  · Fixed-height pickers (flex-shrink:0 so they don't collapse)
+ *  · Attendance table with Duration column
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
@@ -14,7 +14,7 @@
         <div class="brand-logo-slot" id="brandLogoSlot">
           <img src="favicon.ico" alt="JCompass" onerror="this.replaceWith('🧭')">
         </div>
-        <h1 class="brand-name">Journalist's Compass</h1>
+        <h1 class="brand-name">Sentinel Journalist Compass</h1>
       </div>
       <nav class="sidebar-nav">
         <ul class="nav-list">
@@ -59,6 +59,14 @@
             <button class="mode-chip-btn" data-mode="light" type="button">☀️ Light</button>
           </div>
         </div>
+
+        <div class="customizer-field" style="margin-top: 1.25rem;">
+          <label class="customizer-label">Accounts</label>
+          <div style="display:flex; flex-direction:column; gap:0.5rem;">
+            <button class="tray-action-btn" id="trayUserMgmtBtn" type="button">👥 User Management</button>
+            <button class="tray-action-btn" id="trayProfileBtn" type="button">⚙️ Workspace Settings</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -68,7 +76,7 @@
           <img src="favicon.ico" alt="JCompass" onerror="this.replaceWith('☰')">
         </button>
         <div class="topbar-center">
-          <span>JCompass</span>
+          <span>Sentinel Journalist Compass</span>
           <span class="breadcrumb-sep">›</span>
           <span class="breadcrumb-current" id="breadcrumbCurrent">Dashboard</span>
         </div>
@@ -136,7 +144,8 @@
               <div class="card-category">QUICK ACTIONS</div>
               <div style="display:flex; flex-direction:column; gap:0.5rem; margin-top:0.75rem;">
                 <button class="btn btn-primary" id="quickAddProjectBtn" style="font-size:0.85rem;" type="button">+ New Project</button>
-                <button class="btn btn-ghost" id="quickExportCSVBtn" style="font-size:0.85rem;" type="button">⬇ Export CSV</button>
+                <button class="btn btn-ghost" id="quickExportCSVBtn" style="font-size:0.85rem;" type="button">⬇ Export Projects CSV</button>
+                <button class="btn btn-ghost" id="quickExportAllBtn" style="font-size:0.85rem;" type="button">📦 Export All Reports CSV</button>
               </div>
             </div>
           </div>
@@ -195,7 +204,7 @@
 
             <div style="display:flex; gap:0.5rem;">
               <button class="btn btn-primary" id="checkInBtn" style="flex:1; padding:0.9rem; font-size:0.95rem;" type="button">📍 Check In</button>
-              <button class="btn btn-ghost" id="checkOutBtn" style="flex:1; padding:0.9rem; font-size:0.95rem;" type="button">🚪 Check Out</button>
+              <button class="btn btn-checkout" id="checkOutBtn" style="flex:1; padding:0.9rem; font-size:0.95rem;" type="button">🚪 Check Out</button>
             </div>
 
             <div id="attendanceTodayStatus" style="font-size:0.82rem; color:var(--text-muted); padding: 0.6rem 0.8rem; background: rgba(0,0,0,0.15); border-radius: 8px; border: 1px solid var(--border-color); line-height: 1.4;">Not checked in today.</div>
@@ -241,6 +250,7 @@
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">DATE</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">IN</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">OUT</th>
+                  <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">DURATION</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">LAT/LON</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">LOCATION</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">LINKED TO</th>
@@ -250,7 +260,7 @@
                 </tr>
               </thead>
               <tbody id="attendanceTableBody">
-                <tr id="attendanceEmptyRow"><td colspan="11" style="text-align:center; padding:3rem; color:var(--text-muted); font-size:0.9rem;">No attendance records yet.</td></tr>
+                <tr id="attendanceEmptyRow"><td colspan="12" style="text-align:center; padding:3rem; color:var(--text-muted); font-size:0.9rem;">No attendance records yet.</td></tr>
               </tbody>
             </table>
           </div>
@@ -401,6 +411,17 @@
           <input class="form-input" id="beatLocation" type="text" placeholder="e.g., City Hall...">
           <label class="form-label">Instructions</label>
           <textarea class="form-input" id="beatDescription" rows="3" placeholder="What should the team do?" style="resize:vertical; font-family:var(--font-body);"></textarea>
+                    <label class="form-label">Venue Geofence <span style="color:var(--text-muted);font-weight:400;">(optional — enforces location)</span></label>
+          <div style="display:grid; grid-template-columns:2fr 1fr; gap:0.5rem;">
+            <input class="form-input" id="beatVenueName" type="text" placeholder="e.g., City Hall Main Entrance">
+            <input class="form-input" id="beatVenueRadius" type="number" min="20" max="2000" step="10" placeholder="Radius (m)" value="150">
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr auto; gap:0.5rem; align-items:center;">
+            <input class="form-input" id="beatVenueLat" type="text" placeholder="Latitude" readonly>
+            <input class="form-input" id="beatVenueLon" type="text" placeholder="Longitude" readonly>
+            <button type="button" class="btn btn-ghost" id="captureVenueBtn" style="white-space:nowrap; font-size:0.82rem;">📍 Use my location</button>
+          </div>
+          <div style="font-size:0.72rem;color:var(--text-muted);line-height:1.4;">If set, check-in and check-out will be blocked unless the member is inside the radius.</div>
           <label class="form-label">Select Team Member(s) <span style="color:var(--text-muted);font-weight:400;">(multi-select)</span></label>
           <div class="assignee-search-wrap">
             <input type="text" id="reporterSearchInput" class="assignee-search" placeholder="Search by name..." autocomplete="off">
