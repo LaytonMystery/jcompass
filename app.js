@@ -1784,11 +1784,33 @@ function openCalendarDayModal(dateStr) {
       '<div class="cal-item-meta"><span>👤 Task</span><span>Assignee: <b>' + esc(t.assignee || '—') + '</b></span><span>Status: <b>' + esc(t.status || 'PENDING') + '</b></span></div>' +
       (t.description ? '<div class="cal-item-notes">' + esc(t.description) + '</div>' : '') + '</div>';
   });
+
+  /* Event entries — Admin / Editor in Chief get a delete button */
+  const canManageEvents = isPrivileged();
   dayEvents.forEach(e => {
-    html += '<div class="cal-day-item" style="border-left-color:#fbd38d;"><div class="cal-item-title">📌 ' + esc(e.name) + '</div>' +
-      '<div class="cal-item-meta"><span>Event' + (e.completed ? ' • ✅ Completed' : '') + '</span></div></div>';
+    html +=
+      '<div class="cal-day-item" style="border-left-color:#fbd38d; position:relative; padding-right:2.5rem;">' +
+        '<div class="cal-item-title">📌 ' + esc(e.name) + '</div>' +
+        '<div class="cal-item-meta"><span>Event' + (e.completed ? ' • ✅ Completed' : '') + '</span></div>' +
+        (canManageEvents
+          ? '<button class="cal-event-del-btn" data-cal-evt-del="' + esc(e.id) + '" type="button" title="Delete event">✕</button>'
+          : '') +
+      '</div>';
   });
+
   body.innerHTML = html;
+
+  /* Wire delete buttons after the DOM is set */
+  body.querySelectorAll('[data-cal-evt-del]').forEach(btn => {
+    btn.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const evtId = btn.dataset.calEvtDel;
+      await deleteEvent(evtId);
+      /* Re-open the same day so the deleted event disappears immediately */
+      openCalendarDayModal(dateStr);
+    });
+  });
+
   document.getElementById('calendarDayModal').classList.add('active');
 }
 
@@ -3477,8 +3499,6 @@ function wireControlTray() {
     document.getElementById('controlTray')?.classList.remove('active');
     document.getElementById('controlTrayOverlay')?.classList.remove('active');
   };
-  document.getElementById('settingsGearBtn')?.addEventListener('click', openTray);
-  document.getElementById('settingsSidebarBtn')?.addEventListener('click', openTray);
   document.getElementById('userAvatarBtn')?.addEventListener('click', openTray);
   document.getElementById('controlTrayCloseBtn')?.addEventListener('click', closeTray);
   document.getElementById('controlTrayOverlay')?.addEventListener('click', closeTray);
@@ -3615,14 +3635,6 @@ function initializeApp() {
       if (window.innerWidth > 992 && sidebarEl) sidebarEl.classList.remove('active');
     });
 
-    document.getElementById('signOutBtn')?.addEventListener('click', () => {
-      stopAttendanceTicker();
-      stopSpotCheckScheduler();
-      Session.logout();
-      Utils.store.del('jcompass_user');
-      window.location.replace(CONFIG.LOGIN_PAGE);
-    });
-
     document.getElementById('submitAnnouncementBtn')?.addEventListener('click', () => {
       const input = document.getElementById('announceTextInput');
       const target = document.getElementById('announcePingTarget');
@@ -3637,12 +3649,6 @@ function initializeApp() {
     document.getElementById('exportAttendanceBtn')?.addEventListener('click', exportAttendanceCSV);
     document.getElementById('quickExportCSVBtn')?.addEventListener('click', exportProjectsCSV);
     document.getElementById('quickExportAllBtn')?.addEventListener('click', exportAllReportsCSV);
-
-    document.getElementById('trayUserMgmtBtn')?.addEventListener('click', () => {
-      document.getElementById('controlTray')?.classList.remove('active');
-      document.getElementById('controlTrayOverlay')?.classList.remove('active');
-      document.querySelector('.nav-item[data-page="users"]')?.click();
-    });
 
     document.getElementById('createProjectBtn')?.addEventListener('click', async () => {
       const title = document.getElementById('newTitle').value.trim();

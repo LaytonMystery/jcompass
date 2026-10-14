@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════════════════════════
-   Sentinel JCompass add-on — v6.5
+   Sentinel JCompass add-on — v6.6
    Load AFTER app.js.
    ══════════════════════════════════════════════════════════════════════ */
 
@@ -165,6 +165,23 @@
       : 'Notifications';
   }
 
+  function notificationStatusLabel() {
+    if (!('Notification' in window)) return { text: '🔕 Not supported in this browser', disabled: true };
+    if (Notification.permission === 'granted') return { text: '✓ Notifications enabled', disabled: true };
+    if (Notification.permission === 'denied') return { text: '🔕 Blocked — enable in browser settings', disabled: true };
+    return { text: '🔔 Enable notifications', disabled: false };
+  }
+
+  function refreshNotifEnableButton() {
+    const btn = $('notifCenterEnable');
+    if (!btn) return;
+    const status = notificationStatusLabel();
+    btn.textContent = status.text;
+    btn.disabled = status.disabled;
+    btn.classList.toggle('is-enabled', status.disabled && Notification.permission === 'granted');
+    btn.classList.toggle('is-blocked', status.disabled && Notification.permission === 'denied');
+  }
+
   function ensureNotifCenter() {
     let modal = $('notifCenterModal');
     if (modal) return modal;
@@ -179,6 +196,9 @@
             '<h2 class="modal-title">Recent Pings &amp; Announcements</h2>' +
           '</div>' +
           '<button class="modal-close" type="button" id="notifCenterClose">✕</button>' +
+        '</div>' +
+        '<div style="padding:0.75rem 1.25rem; border-bottom:1px solid var(--border-color);">' +
+          '<button class="btn btn-ghost" id="notifCenterEnable" type="button" style="width:100%; font-size:0.85rem;">🔔 Enable notifications</button>' +
         '</div>' +
         '<div class="modal-body" id="notifCenterBody" style="gap:0.6rem;"></div>' +
         '<div class="modal-footer" style="justify-content:space-between;">' +
@@ -200,6 +220,41 @@
       renderNotifCenter();
       updateBellUI();
     });
+    modal.querySelector('#notifCenterEnable').addEventListener('click', async () => {
+      const btn = $('notifCenterEnable');
+      if (!('Notification' in window)) {
+        if (typeof triggerNotificationToast === 'function')
+          triggerNotificationToast('Notifications are not supported in this browser.');
+        return;
+      }
+      if (Notification.permission === 'granted') return;
+      if (Notification.permission === 'denied') {
+        if (typeof triggerNotificationToast === 'function')
+          triggerNotificationToast('Notifications are blocked. Enable them in your browser settings.');
+        return;
+      }
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Requesting…'; }
+      try {
+        const res = await Notification.requestPermission();
+        if (res === 'granted') {
+          if (typeof triggerNotificationToast === 'function')
+            triggerNotificationToast('✓ Notifications enabled.');
+          const u = window.JC.Session.user();
+          if (u && typeof setOneSignalUser === 'function') setOneSignalUser(u.name).catch(() => {});
+          if (typeof window.JC.registerFCM === 'function') {
+            window.JC.registerFCM().catch(() => {});
+          }
+        } else {
+          if (typeof triggerNotificationToast === 'function')
+            triggerNotificationToast('Notification permission not granted.');
+        }
+      } catch (err) {
+        console.warn('Notification.requestPermission failed:', err);
+      }
+      refreshNotifEnableButton();
+      updateBellUI();
+    });
+
     return modal;
   }
 
@@ -232,6 +287,7 @@
 
   function openNotificationCenter() {
     renderNotifCenter();
+    refreshNotifEnableButton();
     ensureNotifCenter().classList.add('active');
     setTimeout(() => {
       const readIds = getReadNotifIds();
@@ -242,15 +298,11 @@
   }
 
   async function toggleBellNotifications() {
-    if ('Notification' in window && Notification.permission === 'default') {
-      try { await Notification.requestPermission(); } catch {}
-    }
-    updateBellUI();
     openNotificationCenter();
   }
 
   /* ══════════════════════════════════════════════════════════════
-     Layout
+     Layout: topbar (bell + profile), tray account name, sidebar tidy
      ══════════════════════════════════════════════════════════════ */
   function buildLayout() {
     const sidebar = $('sidebar');
@@ -279,24 +331,10 @@
       }
     });
 
+    /* Topbar: keep ONLY the bell + profile pill. */
     if (topRight) {
-      /* Accounts button */
-      let acct = $('topbarAccountsBtn');
-      if (!acct) {
-        acct = Utils.el('button', {
-          type: 'button', class: 'topbar-bell', id: 'topbarAccountsBtn',
-          title: 'Staff & Accounts', 'aria-label': 'Staff & Accounts'
-        }, '👥');
-        acct.onclick = () => {
-          $('controlTray')?.classList.add('active');
-          $('controlTrayOverlay')?.classList.add('active');
-        };
-        const bellRef = $('topbarBell');
-        if (bellRef) topRight.insertBefore(acct, bellRef);
-        else topRight.insertBefore(acct, topRight.firstChild);
-      }
-      const role = window.JC.Session.user()?.role;
-      acct.style.display = (role === 'ADMIN' || role === 'EDITOR') ? '' : 'none';
+      /* Remove the extra accounts (👥) button if it ever existed */
+      $('topbarAccountsBtn')?.remove();
 
       /* Bell */
       let bell = $('topbarBell');
@@ -306,7 +344,7 @@
           title: 'Notifications', 'aria-label': 'Notifications'
         });
         bell.onclick = toggleBellNotifications;
-        topRight.insertBefore(bell, topRight.firstChild.nextSibling || topRight.firstChild);
+        topRight.insertBefore(bell, topRight.firstChild);
       } else if (!bell.dataset.boundBell) {
         bell.dataset.boundBell = '1';
         bell.onclick = toggleBellNotifications;
@@ -326,26 +364,21 @@
       }
     }
 
+    /* Hide original user chip */
     $('userAvatarBtn')?.classList.add('chip-hidden');
-    $('sideBell')?.remove();
 
-    const trayHeader = document.querySelector('.control-tray .tray-header');
-    if (trayHeader && !$('trayHamburger')) {
-      const hb = Utils.el('button', {
-        type: 'button', class: 'tray-hamburger', id: 'trayHamburger',
-        title: 'Toggle navigation', 'aria-label': 'Toggle navigation'
-      });
-      hb.appendChild(Utils.el('div', { class: 'hamburger-icon' }, [
-        Utils.el('span'), Utils.el('span'), Utils.el('span')
-      ]));
-      hb.onclick = () => {
-        $('controlTray')?.classList.remove('active');
-        $('controlTrayOverlay')?.classList.remove('active');
-        $('sidebar')?.classList.add('active');
-      };
-      trayHeader.insertBefore(hb, trayHeader.firstChild);
+    /* Remove legacy sidebar bell + tray hamburger if present */
+    $('sideBell')?.remove();
+    $('trayHamburger')?.remove();
+
+    /* Tray title = account name */
+    const trayTitle = $('trayAccountName');
+    if (trayTitle) {
+      const g = id => ($(id) || {}).textContent || '';
+      trayTitle.textContent = g('displayName') || 'Workspace';
     }
 
+    /* Mobile menu-toggle → logo */
     const menuBtn = $('menuToggle');
     if (menuBtn && !menuBtn.querySelector('img')) {
       menuBtn.innerHTML = '';
@@ -356,11 +389,14 @@
       menuBtn.appendChild(img);
     }
 
+    /* Mirror name / avatar to tray + topbar pill */
     const mirror = () => {
       const g = id => ($(id) || {}).textContent || '';
       const av = $('topbarAvatar'); const nm = $('topbarName');
       if (av) av.textContent = g('avatarBadgeIcon') || 'JC';
       if (nm) nm.textContent = g('displayName') || 'User';
+      const tt = $('trayAccountName');
+      if (tt) tt.textContent = g('displayName') || 'Workspace';
     };
     ['displayName', 'displayRole', 'avatarBadgeIcon'].forEach(id => {
       const el = $(id);
@@ -370,6 +406,38 @@
       }
     });
     mirror();
+  }
+
+  /* ── Tray action wiring (once) ───────────────────────────────── */
+  function wireTrayActions() {
+    const tray = $('controlTray');
+    if (!tray || tray.dataset.trayWired === '1') return;
+    tray.dataset.trayWired = '1';
+
+    const closeTray = () => {
+      $('controlTray')?.classList.remove('active');
+      $('controlTrayOverlay')?.classList.remove('active');
+    };
+
+    $('trayUserMgmtBtn')?.addEventListener('click', () => {
+      closeTray();
+      const navItem = document.querySelector('.nav-item[data-page="users"]');
+      if (navItem) navItem.click();
+    });
+
+    $('trayWorkspaceBtn')?.addEventListener('click', () => {
+      closeTray();
+      setTimeout(initBrightness, 50);
+    });
+
+    $('traySignOutBtn')?.addEventListener('click', () => {
+      closeTray();
+      try { if (typeof stopAttendanceTicker === 'function') stopAttendanceTicker(); } catch {}
+      try { if (typeof stopSpotCheckScheduler === 'function') stopSpotCheckScheduler(); } catch {}
+      window.JC.Session.logout();
+      window.JC.Utils.store.del('jcompass_user');
+      window.location.replace(window.JC.CONFIG.LOGIN_PAGE);
+    });
   }
 
   /* ── Init ────────────────────────────────────────────────────── */
@@ -384,6 +452,7 @@
     initBrightness();
     buildCabinetStats();
     buildLayout();
+    wireTrayActions();
 
     setInterval(() => { if (window.JC.getAnnouncements) updateBellUI(); }, 3000);
   }
@@ -400,11 +469,12 @@
     window.rebuildApplicationDOMViews = function () {
       origRebuild.apply(this, arguments);
       buildLayout();
+      wireTrayActions();
     };
   }
 
   document.addEventListener('click', e => {
-    if (e.target.closest('.settings-sidebar-btn, #settingsGearBtn, #userAvatarBtn, #topbarProfileBtn, #topbarAccountsBtn')) {
+    if (e.target.closest('.settings-sidebar-btn, #settingsGearBtn, #userAvatarBtn, #topbarProfileBtn, #trayWorkspaceBtn')) {
       setTimeout(initBrightness, 50);
     }
   }, true);

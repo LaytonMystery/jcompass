@@ -1,9 +1,9 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  Sentinel JCompass — Dashboard DOM Builder v6.9
- *  · Multi-assignee tasks
- *  · Search bars in both pickers
- *  · Attendance table with Duration column
+ *  Sentinel JCompass — Dashboard DOM Builder v7.2
+ *  · Sidebar footer emptied (Account / Sign Out moved to right tray)
+ *  · Control tray shows signed-in account name
+ *  · Attendance table with Duration + Checks columns
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
@@ -29,16 +29,15 @@
           <li class="nav-item admin-only-nav" data-page="audit"><span class="nav-icon">📜</span><span class="nav-label">Activity Log</span></li>
         </ul>
       </nav>
-      <div class="sidebar-footer">
-        <button class="settings-sidebar-btn" id="settingsSidebarBtn">⚙️ Workspace Settings</button>
-        <button class="signout-btn" id="signOutBtn">→ SIGN OUT</button>
+      <div class="sidebar-footer" id="sidebarFooter">
+        <!-- Workspace Settings + Sign Out moved to the right-side tray -->
       </div>
     </aside>
 
     <div class="control-tray-overlay" id="controlTrayOverlay"></div>
     <div class="control-tray" id="controlTray">
       <div class="tray-header">
-        <div class="tray-title">WORKSPACE CONTROLS</div>
+        <div class="tray-title tray-account-name" id="trayAccountName">Loading…</div>
         <button class="tray-close" id="controlTrayCloseBtn" type="button">✕</button>
       </div>
       <div class="tray-body">
@@ -61,10 +60,11 @@
         </div>
 
         <div class="customizer-field" style="margin-top: 1.25rem;">
-          <label class="customizer-label">Accounts</label>
+          <label class="customizer-label">Account</label>
           <div style="display:flex; flex-direction:column; gap:0.5rem;">
             <button class="tray-action-btn" id="trayUserMgmtBtn" type="button">👥 User Management</button>
-            <button class="tray-action-btn" id="trayProfileBtn" type="button">⚙️ Workspace Settings</button>
+            <button class="tray-action-btn" id="trayWorkspaceBtn" type="button">⚙️ Workspace Settings</button>
+            <button class="tray-action-btn tray-action-danger" id="traySignOutBtn" type="button">→ Sign Out</button>
           </div>
         </div>
       </div>
@@ -251,6 +251,7 @@
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">IN</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">OUT</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">DURATION</th>
+                  <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">CHECKS</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">LAT/LON</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">LOCATION</th>
                   <th style="padding:0.75rem 1rem; color:var(--text-muted); font-weight:700; font-size:0.75rem;">LINKED TO</th>
@@ -260,7 +261,7 @@
                 </tr>
               </thead>
               <tbody id="attendanceTableBody">
-                <tr id="attendanceEmptyRow"><td colspan="12" style="text-align:center; padding:3rem; color:var(--text-muted); font-size:0.9rem;">No attendance records yet.</td></tr>
+                <tr id="attendanceEmptyRow"><td colspan="13" style="text-align:center; padding:3rem; color:var(--text-muted); font-size:0.9rem;">No attendance records yet.</td></tr>
               </tbody>
             </table>
           </div>
@@ -411,7 +412,8 @@
           <input class="form-input" id="beatLocation" type="text" placeholder="e.g., City Hall...">
           <label class="form-label">Instructions</label>
           <textarea class="form-input" id="beatDescription" rows="3" placeholder="What should the team do?" style="resize:vertical; font-family:var(--font-body);"></textarea>
-                    <label class="form-label">Venue Geofence <span style="color:var(--text-muted);font-weight:400;">(optional — enforces location)</span></label>
+
+          <label class="form-label">Venue Geofence <span style="color:var(--text-muted);font-weight:400;">(optional — enforces location)</span></label>
           <div style="display:grid; grid-template-columns:2fr 1fr; gap:0.5rem;">
             <input class="form-input" id="beatVenueName" type="text" placeholder="e.g., City Hall Main Entrance">
             <input class="form-input" id="beatVenueRadius" type="number" min="20" max="2000" step="10" placeholder="Radius (m)" value="150">
@@ -422,6 +424,7 @@
             <button type="button" class="btn btn-ghost" id="captureVenueBtn" style="white-space:nowrap; font-size:0.82rem;">📍 Use my location</button>
           </div>
           <div style="font-size:0.72rem;color:var(--text-muted);line-height:1.4;">If set, check-in and check-out will be blocked unless the member is inside the radius.</div>
+
           <label class="form-label">Select Team Member(s) <span style="color:var(--text-muted);font-weight:400;">(multi-select)</span></label>
           <div class="assignee-search-wrap">
             <input type="text" id="reporterSearchInput" class="assignee-search" placeholder="Search by name..." autocomplete="off">
