@@ -1,8 +1,8 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  Sentinel JCompass — Dashboard DOM Builder v7.2
+ *  Sentinel JCompass — Dashboard DOM Builder v7.3
  *  · Sidebar footer emptied (Account / Sign Out moved to right tray)
- *  · Control tray shows signed-in account name
+ *  · Control tray shows signed-in account name + Sign Out only
  *  · Attendance table with Duration + Checks columns
  * ══════════════════════════════════════════════════════════════════════
  */
@@ -62,8 +62,6 @@
         <div class="customizer-field" style="margin-top: 1.25rem;">
           <label class="customizer-label">Account</label>
           <div style="display:flex; flex-direction:column; gap:0.5rem;">
-            <button class="tray-action-btn" id="trayUserMgmtBtn" type="button">👥 User Management</button>
-            <button class="tray-action-btn" id="trayWorkspaceBtn" type="button">⚙️ Workspace Settings</button>
             <button class="tray-action-btn tray-action-danger" id="traySignOutBtn" type="button">→ Sign Out</button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════════════════════════
-   Sentinel JCompass add-on — v6.7
+   Sentinel JCompass add-on — v6.8
    Load AFTER app.js.
    ══════════════════════════════════════════════════════════════════════ */
 
@@ -339,7 +339,6 @@
 
     /* Topbar: keep ONLY the bell + profile pill. */
     if (topRight) {
-      /* Remove the extra accounts (👥) button if it ever existed */
       $('topbarAccountsBtn')?.remove();
 
       /* Bell */
@@ -429,17 +428,6 @@
       $('controlTrayOverlay')?.classList.remove('active');
     };
 
-    $('trayUserMgmtBtn')?.addEventListener('click', () => {
-      closeTray();
-      const navItem = document.querySelector('.nav-item[data-page="users"]');
-      if (navItem) navItem.click();
-    });
-
-    $('trayWorkspaceBtn')?.addEventListener('click', () => {
-      closeTray();
-      setTimeout(initBrightness, 50);
-    });
-
     $('traySignOutBtn')?.addEventListener('click', () => {
       closeTray();
       try { if (typeof stopAttendanceTicker === 'function') stopAttendanceTicker(); } catch {}
@@ -484,7 +472,7 @@
   }
 
   document.addEventListener('click', e => {
-    if (e.target.closest('#topbarProfileBtn, #trayWorkspaceBtn')) {
+    if (e.target.closest('#topbarProfileBtn')) {
       setTimeout(initBrightness, 50);
     }
   }, true);

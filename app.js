@@ -2983,9 +2983,17 @@ function generateSourcesGrid() {
   if (!container) return;
   container.innerHTML = '';
 
-  const teamMembers = registeredUsersDB.filter(u => u.role === 'STAFF' || u.role === 'ADMIN' || u.role === 'EDITOR');
+  const allMembers = registeredUsersDB.filter(u =>
+    u.role === 'STAFF' || u.role === 'ADMIN' || u.role === 'EDITOR'
+  );
+
+  /* Staff see only their own card. Admin / Editor in Chief see everyone. */
+  const visibleMembers = isPrivileged()
+    ? allMembers
+    : allMembers.filter(u => currentUser && u.name === currentUser.name);
+
   const q = sourceSearchQuery.toLowerCase();
-  const filtered = teamMembers.filter(u => !q || u.name.toLowerCase().includes(q));
+  const filtered = visibleMembers.filter(u => !q || u.name.toLowerCase().includes(q));
 
   if (filtered.length === 0) {
     container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No team members found.</div>';
