@@ -1,6 +1,8 @@
 /**
  * JCompass — Session Manager
- * Full version with verify(), save(), requireOrRedirect(), isAdmin()
+ * · Persists to localStorage when "Remember me" is checked
+ * · Persists to sessionStorage when it isn't (cleared on browser close)
+ * · Server-verifies via verify_session; fails closed
  */
 (function () {
   const { CONFIG, Utils } = window.JC;
@@ -17,7 +19,38 @@
     return client;
   }
 
-  const readRaw = () => Utils.store.get(CONFIG.SESSION_KEY, null);
+  /* ── Storage helpers ──────────────────────────────────────────── */
+  function readRaw() {
+    // sessionStorage takes precedence (session-scoped, more recent)
+    try {
+      const s = sessionStorage.getItem(CONFIG.SESSION_KEY);
+      if (s) return JSON.parse(s);
+    } catch {}
+    // Fall back to localStorage (Remember Me)
+    try {
+      const l = localStorage.getItem(CONFIG.SESSION_KEY);
+      if (l) return JSON.parse(l);
+    } catch {}
+    return null;
+  }
+
+  function writeRaw(obj, rememberMe) {
+    const payload = JSON.stringify(obj);
+    try { localStorage.removeItem(CONFIG.SESSION_KEY); } catch {}
+    try { sessionStorage.removeItem(CONFIG.SESSION_KEY); } catch {}
+    try {
+      if (rememberMe) localStorage.setItem(CONFIG.SESSION_KEY, payload);
+      else sessionStorage.setItem(CONFIG.SESSION_KEY, payload);
+    } catch (e) { console.warn('[JCompass] session write failed:', e); }
+  }
+
+  function clearRaw() {
+    try { localStorage.removeItem(CONFIG.SESSION_KEY); } catch {}
+    try { sessionStorage.removeItem(CONFIG.SESSION_KEY); } catch {}
+  }
+
+  /* ── Public API ───────────────────────────────────────────────── */
+  S.readRaw = readRaw;         // exposed for auth-guard
 
   S.verify = function () {
     if (cached) return Promise.resolve(cached);
@@ -28,33 +61,43 @@
 
     const payload = Utils.decodeTokenPayload(raw.token);
     if (!payload || (payload.exp * 1000) < Date.now()) {
-      S.logout();
+      clearRaw();
       return Promise.resolve(null);
     }
 
     const sb = getClient();
-    if (!sb) { S.logout(); return Promise.resolve(null); }
+    if (!sb) { clearRaw(); return Promise.resolve(null); }
 
-    verifying = sb.rpc('verify_session', { p_token: raw.token }).then(({ data, error }) => {
-      verifying = null;
-      if (error || !data || !data.ok) { S.logout(); return null; }
-      cached = { user: data.user, token: raw.token, exp: payload.exp };
-      return cached;
-    }).catch(() => {
-      verifying = null;
-      S.logout();
-      return null;
-    });
+    verifying = sb.rpc('verify_session', { p_token: raw.token })
+      .then(({ data, error }) => {
+        verifying = null;
+        if (error || !data || !data.ok || !data.user) { clearRaw(); return null; }
+        cached = { user: data.user, token: raw.token, exp: payload.exp };
+        return cached;
+      })
+      .catch(() => { verifying = null; clearRaw(); return null; });
 
     return verifying;
   };
 
-  S.get       = () => cached;
-  S.user      = () => cached ? cached.user : null;
-  S.getToken  = () => cached ? cached.token : (readRaw() || {}).token || null;
-  S.isAdmin   = () => !!cached && cached.user && cached.user.role === 'ADMIN';
-  S.save      = (token) => { Utils.store.set(CONFIG.SESSION_KEY, { token }); cached = null; };
-  S.logout    = () => { Utils.store.del(CONFIG.SESSION_KEY); cached = null; };
+  S.get      = () => cached;
+  S.user     = () => (cached ? cached.user : null);
+  S.getToken = () => {
+    const raw = readRaw();
+    return raw ? raw.token : null;
+  };
+  S.isAdmin  = () => !!cached && cached.user && cached.user.role === 'ADMIN';
+
+  /* rememberMe: true → localStorage; false/undefined → sessionStorage */
+  S.save = (token, rememberMe) => {
+    writeRaw({ token }, !!rememberMe);
+    cached = null;
+  };
+
+  S.logout = () => {
+    clearRaw();
+    cached = null;
+  };
 
   S.requireOrRedirect = async function () {
     const s = await S.verify();

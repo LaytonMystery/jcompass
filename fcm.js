@@ -1,6 +1,9 @@
 /**
  * JCompass — Firebase Cloud Messaging integration
  * Loaded after app.js on index.html only.
+ * The FCM token is persisted via the `register_fcm_token` RPC, which
+ * validates the caller's session token server-side. Do not write
+ * directly to the users table from the client.
  */
 (function () {
   'use strict';
@@ -76,10 +79,29 @@
       }
       console.log('[FCM] Token:', token.slice(0, 25) + '…');
 
+      /* ── Persist the token via the session-validated RPC ────────── */
+      const sessionToken = (window.JC.Session && window.JC.Session.getToken)
+        ? window.JC.Session.getToken()
+        : null;
+
+      if (!sessionToken) {
+        console.warn('[FCM] No session token — skipping token save.');
+        return null;
+      }
+
       const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
-      const { error } = await sb.from('users').update({ fcm_token: token }).eq('name', user.name);
-      if (error) console.error('[FCM] Token save failed:', error);
-      else console.log('[FCM] Token saved for', user.name);
+      const { data, error } = await sb.rpc('register_fcm_token', {
+        p_token: sessionToken,
+        p_fcm_token: token
+      });
+
+      if (error) {
+        console.error('[FCM] Token save failed:', error);
+      } else if (data && data.ok) {
+        console.log('[FCM] Token saved for', user.name);
+      } else {
+        console.warn('[FCM] Token save rejected:', data);
+      }
 
       return token;
     } catch (e) {
@@ -103,7 +125,7 @@
     });
   }
 
-  // Override the app's sendPushNotification to route through our Edge Function
+  /* Override the app's sendPushNotification to route through our Edge Function */
   window.sendPushNotification = async function (title, message, targetUserName) {
     const CONFIG = window.JC && window.JC.CONFIG;
     if (!CONFIG) return;
@@ -125,7 +147,7 @@
   window.JC.registerFCM = registerFCMToken;
   window.JC.wireFCMForeground = wireForeground;
 
-  // Tap the bell → also register FCM
+  /* Tap the bell → also register FCM */
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#topbarBell')) return;
     setTimeout(() => {
@@ -133,7 +155,7 @@
     }, 200);
   }, true);
 
-  // Boot
+  /* Boot */
   (async function boot() {
     await waitForApp();
     await new Promise(r => setTimeout(r, 800));

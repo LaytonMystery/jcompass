@@ -1,9 +1,10 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  Sentinel JCompass — Dashboard DOM Builder v7.3
+ *  Sentinel JCompass — Dashboard DOM Builder v7.4
  *  · Sidebar footer emptied (Account / Sign Out moved to right tray)
  *  · Control tray shows signed-in account name + Sign Out only
  *  · Attendance table with Duration + Checks columns
+ *  · Create New Project modal includes "Assign To" dropdown
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
@@ -383,6 +384,10 @@
             <option value="FEATURES">Features</option>
             <option value="SPORTS">Sports</option>
             <option value="OPINION">Opinion</option>
+          </select>
+          <label class="form-label">Assign To</label>
+          <select class="form-select" id="newProjectReporter">
+            <option value="">— Unassigned —</option>
           </select>
           <label class="form-label">Deadline</label>
           <input class="form-input" id="newDeadline" type="date">

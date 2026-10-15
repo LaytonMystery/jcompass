@@ -1,6 +1,6 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  SENTINEL JOURNALIST'S COMPASS v7.1                                  ║
+ * ║  SENTINEL JOURNALIST'S COMPASS v7.2                                  ║
  * ║  · Overdue projects modal (extend / archive)                         ║
  * ║  · Multi-assignee tasks + search pickers                             ║
  * ║  · Editor in Chief role                                              ║
@@ -8,6 +8,7 @@
  * ║  · Activity summary export/delete                                    ║
  * ║  · Attendance 15-min check-in cooldown + session duration            ║
  * ║  · Geofence venue enforcement + spot-checks while checked in         ║
+ * ║  · Create New Project modal includes "Assign To" dropdown            ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
@@ -1800,13 +1801,11 @@ function openCalendarDayModal(dateStr) {
 
   body.innerHTML = html;
 
-  /* Wire delete buttons after the DOM is set */
   body.querySelectorAll('[data-cal-evt-del]').forEach(btn => {
     btn.addEventListener('click', async (ev) => {
       ev.stopPropagation();
       const evtId = btn.dataset.calEvtDel;
       await deleteEvent(evtId);
-      /* Re-open the same day so the deleted event disappears immediately */
       openCalendarDayModal(dateStr);
     });
   });
@@ -3592,6 +3591,32 @@ function initSupabaseClient() {
   console.log('JCompass: Supabase client initialized.');
 }
 
+/* ── Populate the "Assign To" dropdown on the Create New Project modal ── */
+function populateNewProjectReporterDropdown() {
+  const sel = document.getElementById('newProjectReporter');
+  if (!sel) return;
+
+  const assignable = registeredUsersDB
+    .filter(u => u.role === 'STAFF' || u.role === 'EDITOR' || u.role === 'ADMIN')
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const prev = sel.value;
+
+  sel.innerHTML = '<option value="">— Unassigned —</option>';
+  assignable.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u.name;
+    opt.textContent = u.name + ' · ' + u.role;
+    sel.appendChild(opt);
+  });
+
+  if (prev && assignable.some(u => u.name === prev)) {
+    sel.value = prev;
+  } else if (currentUser && assignable.some(u => u.name === currentUser.name)) {
+    sel.value = currentUser.name;
+  }
+}
+
 function initializeApp() {
   try {
     wipeLegacyCache();
@@ -3658,14 +3683,21 @@ function initializeApp() {
     document.getElementById('quickExportCSVBtn')?.addEventListener('click', exportProjectsCSV);
     document.getElementById('quickExportAllBtn')?.addEventListener('click', exportAllReportsCSV);
 
+    /* ── Create New Project ────────────────────────────────────── */
     document.getElementById('createProjectBtn')?.addEventListener('click', async () => {
       const title = document.getElementById('newTitle').value.trim();
       const category = document.getElementById('newCategory').value;
       const deadline = document.getElementById('newDeadline').value || Utils.todayLocalISO();
+
+      /* Read the Assign To dropdown. Fall back to the current user
+         if nothing was selected, so existing behaviour is preserved. */
+      const reporterSel = document.getElementById('newProjectReporter');
+      const reporter = (reporterSel && reporterSel.value) ? reporterSel.value : currentUser.name;
+
       if (!title) return;
       const payload = {
         title, category, deadline, status: 'ACTIVE', priority: 'MEDIUM',
-        progress: 0, reporter: currentUser.name, notes: '', tags: '', archived: false,
+        progress: 0, reporter, notes: '', tags: '', archived: false,
         created_by: currentUser.name
       };
       if (supabaseClient) {
@@ -3681,6 +3713,8 @@ function initializeApp() {
       rebuildApplicationDOMViews();
       document.getElementById('newProjectModal').classList.remove('active');
       document.getElementById('newTitle').value = '';
+      const repSel = document.getElementById('newProjectReporter');
+      if (repSel) repSel.value = '';
       triggerNotificationToast('Project created.');
     });
 
@@ -3787,6 +3821,7 @@ function initializeApp() {
     ];
     modalOpeners.forEach(([btnId, modalId]) => {
       document.getElementById(btnId)?.addEventListener('click', () => {
+        if (modalId === 'newProjectModal') populateNewProjectReporterDropdown();
         document.getElementById(modalId)?.classList.add('active');
       });
     });
@@ -3943,7 +3978,7 @@ function initializeApp() {
 
     document.getElementById('generateActivitySummaryBtn')?.addEventListener('click', generateActivitySummaryReport);
 
-    console.log('✅ Sentinel JCompass initialized (v7.1)');
+    console.log('✅ Sentinel JCompass initialized (v7.2)');
   } catch (err) {
     console.error('❌ JCompass initializeApp error:', err);
     console.error(err && err.stack);

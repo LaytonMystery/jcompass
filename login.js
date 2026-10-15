@@ -1,8 +1,8 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  JCompass — Login Controller (v9, hard-fallback)
+ *  JCompass — Login Controller (v10)
  *  · Delegated submit listener (works regardless of DOM timing)
- *  · Extensive console traces for debugging
+ *  · Reads the "Remember me" checkbox and passes it to Session.save
  *  · Falls back to hardcoded CONFIG if window.JC is missing
  * ══════════════════════════════════════════════════════════════════════
  */
@@ -61,15 +61,19 @@
   }
 
   /* ── Persist session ─────────────────────────────────────────── */
-  function saveSession(token) {
+  function saveSession(token, rememberMe) {
     // Prefer the shared Session manager if available
     if (window.JC && window.JC.Session && typeof window.JC.Session.save === 'function') {
-      window.JC.Session.save(token);
+      window.JC.Session.save(token, !!rememberMe);
       return;
     }
-    // Fallback: write directly
+    // Fallback: write directly (localStorage if rememberMe, else sessionStorage)
     try {
-      localStorage.setItem(CONFIG.SESSION_KEY, JSON.stringify({ token }));
+      const payload = JSON.stringify({ token });
+      localStorage.removeItem(CONFIG.SESSION_KEY);
+      sessionStorage.removeItem(CONFIG.SESSION_KEY);
+      if (rememberMe) localStorage.setItem(CONFIG.SESSION_KEY, payload);
+      else sessionStorage.setItem(CONFIG.SESSION_KEY, payload);
     } catch (e) {
       console.error('[JCompass] Failed to write session:', e);
     }
@@ -135,7 +139,8 @@
       }
 
       console.log('[JCompass] Login OK, saving session');
-      saveSession(data.token);
+      const rememberMe = !!document.getElementById('rememberMe')?.checked;
+      saveSession(data.token, rememberMe);
       userInput.value = '';
       passInput.value = '';
 
@@ -175,9 +180,7 @@
     lockoutTimer = setInterval(tick, 1000);
   }
 
-  /* ── Delegated submit listener ───────────────────────────────────
-     Attached to `document` so it fires no matter when the form is
-     injected into the DOM, and even if the modal is re-created.    */
+  /* ── Delegated submit listener ─────────────────────────────────── */
   document.addEventListener('submit', (e) => {
     if (e.target && e.target.id === 'loginForm') {
       console.log('[JCompass] Submit event intercepted for #loginForm');
@@ -185,7 +188,7 @@
     }
   }, true);
 
-  /* ── Enter-key support (also delegated) ───────────────────────── */
+  /* ── Enter-key support ────────────────────────────────────────── */
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     if (e.target && (e.target.id === 'username' || e.target.id === 'password')) {
@@ -195,7 +198,7 @@
     }
   }, true);
 
-  /* ── Password toggle (delegated) ──────────────────────────────── */
+  /* ── Password toggle ──────────────────────────────────────────── */
   document.addEventListener('click', (e) => {
     const toggle = e.target.closest('#passwordToggle');
     if (!toggle) return;
@@ -210,7 +213,7 @@
     pass.focus();
   });
 
-  /* ── Clear form button ────────────────────────────────────────── */
+  /* ── Clear form ───────────────────────────────────────────────── */
   document.addEventListener('click', (e) => {
     const closeBtn = e.target.closest('#loginCardClose');
     if (!closeBtn) return;
