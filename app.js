@@ -1,6 +1,6 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  SENTINEL JOURNALIST'S COMPASS v7.2                                  ║
+ * ║  SENTINEL JOURNALIST'S COMPASS v7.3                                  ║
  * ║  · Overdue projects modal (extend / archive)                         ║
  * ║  · Multi-assignee tasks + search pickers                             ║
  * ║  · Editor in Chief role                                              ║
@@ -8,7 +8,8 @@
  * ║  · Activity summary export/delete                                    ║
  * ║  · Attendance 15-min check-in cooldown + session duration            ║
  * ║  · Geofence venue enforcement + spot-checks while checked in         ║
- * ║  · Create New Project modal includes "Assign To" dropdown            ║
+ * ║  · Create New Project modal uses 2-column assignee picker            ║
+ * ║  · Project Profile "Assigned To" is a select (no free text)          ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
@@ -64,6 +65,7 @@ const isAssignable = (role) => role !== 'ADMIN';
 
 const reporterSelection = new Set();
 const assigneeSelection = new Set();
+let newProjectAssignee = '';
 
 function parseAssignees(str) {
   return (str || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -611,7 +613,7 @@ function openProjectProfile(projectId) {
   document.getElementById('profileProgressBar').style.width = (p.progress || 0) + '%';
   document.getElementById('profileProgressLabel').innerText = (p.progress || 0) + '%';
   document.getElementById('profileProgressInput').value = p.progress || 0;
-  document.getElementById('profileAssignedReporter').value = p.reporter || '';
+  populateProfileReporterSelect(p.reporter || '');
   document.getElementById('profileNotes').value = p.notes || '';
   document.getElementById('profileTags').value = p.tags || '';
   document.getElementById('profileStatusSelect').value = p.status || 'ACTIVE';
@@ -1786,7 +1788,6 @@ function openCalendarDayModal(dateStr) {
       (t.description ? '<div class="cal-item-notes">' + esc(t.description) + '</div>' : '') + '</div>';
   });
 
-  /* Event entries — Admin / Editor in Chief get a delete button */
   const canManageEvents = isPrivileged();
   dayEvents.forEach(e => {
     html +=
@@ -2211,7 +2212,6 @@ function updateAttendanceButtons() {
 
   const activeSession = getActiveAttendanceSession();
 
-  /* STATE 1: checked in */
   if (activeSession) {
     btnIn.disabled = true;
     btnIn.textContent = '✓ Checked In';
@@ -2259,7 +2259,6 @@ function updateAttendanceButtons() {
     return;
   }
 
-  /* STATE 2: cooldown */
   const cooldown = getCheckInCooldownRemaining();
   if (cooldown > 0) {
     btnIn.disabled = true;
@@ -2286,7 +2285,6 @@ function updateAttendanceButtons() {
     return;
   }
 
-  /* STATE 3: ready */
   btnIn.disabled = false;
   btnIn.textContent = '📍 Check In';
   btnIn.style.background = '';
@@ -2986,7 +2984,6 @@ function generateSourcesGrid() {
     u.role === 'STAFF' || u.role === 'ADMIN' || u.role === 'EDITOR'
   );
 
-  /* Staff see only their own card. Admin / Editor in Chief see everyone. */
   const visibleMembers = isPrivileged()
     ? allMembers
     : allMembers.filter(u => currentUser && u.name === currentUser.name);
@@ -3591,29 +3588,69 @@ function initSupabaseClient() {
   console.log('JCompass: Supabase client initialized.');
 }
 
-/* ── Populate the "Assign To" dropdown on the Create New Project modal ── */
-function populateNewProjectReporterDropdown() {
-  const sel = document.getElementById('newProjectReporter');
+/* ── Populate the single-select assignee picker on the Create New Project modal ── */
+function populateNewProjectAssigneePicker() {
+  const container = document.getElementById('newProjectAssigneeList');
+  const searchInput = document.getElementById('newProjectAssigneeSearch');
+  if (!container) return;
+
+  const q = (searchInput?.value || '').trim().toLowerCase();
+  const staffUsers = registeredUsersDB
+    .filter(u => isAssignable(u.role))
+    .filter(u => !q || u.name.toLowerCase().includes(q));
+
+  if (staffUsers.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:0.5rem;grid-column:1/-1;">' +
+      (q ? 'No members match "' + esc(q) + '".' : 'No members available.') + '</div>';
+    return;
+  }
+
+  container.innerHTML = staffUsers.map(u => {
+    const checked = newProjectAssignee === u.name ? ' checked' : '';
+    return '<label style="display:flex; align-items:center; gap:0.75rem; padding:0.5rem; border-radius:6px; cursor:pointer;">' +
+      '<input type="radio" name="newProjectAssigneeRadio" value="' + esc(u.name) + '" data-new-project-assignee' + checked +
+        ' style="width:18px; height:18px; accent-color:var(--accent-light); cursor:pointer;">' +
+      '<div style="display:flex; align-items:center; gap:0.5rem; flex:1;">' +
+        '<div class="staff-avatar-mini">' + esc(u.code || '??') + '</div>' +
+        '<span style="font-weight:600; font-size:0.9rem;">' + esc(u.name) + '</span>' +
+        '<span style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase;">' + esc(u.role) + '</span>' +
+      '</div>' +
+    '</label>';
+  }).join('');
+
+  container.querySelectorAll('input[data-new-project-assignee]').forEach(rb => {
+    rb.addEventListener('change', () => {
+      if (rb.checked) newProjectAssignee = rb.value;
+    });
+  });
+}
+
+/* ── Populate the "Assigned To" select inside the Project Profile modal ── */
+function populateProfileReporterSelect(currentReporter) {
+  const sel = document.getElementById('profileAssignedReporter');
   if (!sel) return;
 
   const assignable = registeredUsersDB
     .filter(u => u.role === 'STAFF' || u.role === 'EDITOR' || u.role === 'ADMIN')
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const prev = sel.value;
-
   sel.innerHTML = '<option value="">— Unassigned —</option>';
+
+  let found = false;
   assignable.forEach(u => {
     const opt = document.createElement('option');
     opt.value = u.name;
     opt.textContent = u.name + ' · ' + u.role;
+    if (u.name === currentReporter) { opt.selected = true; found = true; }
     sel.appendChild(opt);
   });
 
-  if (prev && assignable.some(u => u.name === prev)) {
-    sel.value = prev;
-  } else if (currentUser && assignable.some(u => u.name === currentUser.name)) {
-    sel.value = currentUser.name;
+  if (currentReporter && !found) {
+    const opt = document.createElement('option');
+    opt.value = currentReporter;
+    opt.textContent = currentReporter + ' · (removed account)';
+    opt.selected = true;
+    sel.appendChild(opt);
   }
 }
 
@@ -3689,10 +3726,7 @@ function initializeApp() {
       const category = document.getElementById('newCategory').value;
       const deadline = document.getElementById('newDeadline').value || Utils.todayLocalISO();
 
-      /* Read the Assign To dropdown. Fall back to the current user
-         if nothing was selected, so existing behaviour is preserved. */
-      const reporterSel = document.getElementById('newProjectReporter');
-      const reporter = (reporterSel && reporterSel.value) ? reporterSel.value : currentUser.name;
+      const reporter = newProjectAssignee || currentUser.name;
 
       if (!title) return;
       const payload = {
@@ -3713,8 +3747,7 @@ function initializeApp() {
       rebuildApplicationDOMViews();
       document.getElementById('newProjectModal').classList.remove('active');
       document.getElementById('newTitle').value = '';
-      const repSel = document.getElementById('newProjectReporter');
-      if (repSel) repSel.value = '';
+      newProjectAssignee = '';
       triggerNotificationToast('Project created.');
     });
 
@@ -3731,11 +3764,13 @@ function initializeApp() {
       if (!e.target) return;
       if (e.target.id === 'reporterSearchInput') populateReporterCheckboxes();
       if (e.target.id === 'assigneeSearchInput') populateAssigneeCheckboxes();
+      if (e.target.id === 'newProjectAssigneeSearch') populateNewProjectAssigneePicker();
     });
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' || !e.target) return;
       if (e.target.id === 'reporterSearchInput') { e.preventDefault(); populateReporterCheckboxes(); }
       if (e.target.id === 'assigneeSearchInput') { e.preventDefault(); populateAssigneeCheckboxes(); }
+      if (e.target.id === 'newProjectAssigneeSearch') { e.preventDefault(); populateNewProjectAssigneePicker(); }
     });
     document.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-search-trigger]');
@@ -3743,6 +3778,7 @@ function initializeApp() {
       const which = btn.dataset.searchTrigger;
       if (which === 'reporter') populateReporterCheckboxes();
       if (which === 'assignee') populateAssigneeCheckboxes();
+      if (which === 'newProjectAssignee') populateNewProjectAssigneePicker();
     });
 
     document.getElementById('calPrevMonth')?.addEventListener('click', () => {
@@ -3821,7 +3857,12 @@ function initializeApp() {
     ];
     modalOpeners.forEach(([btnId, modalId]) => {
       document.getElementById(btnId)?.addEventListener('click', () => {
-        if (modalId === 'newProjectModal') populateNewProjectReporterDropdown();
+        if (modalId === 'newProjectModal') {
+          newProjectAssignee = currentUser ? currentUser.name : '';
+          const s = document.getElementById('newProjectAssigneeSearch');
+          if (s) s.value = '';
+          populateNewProjectAssigneePicker();
+        }
         document.getElementById(modalId)?.classList.add('active');
       });
     });
@@ -3978,7 +4019,7 @@ function initializeApp() {
 
     document.getElementById('generateActivitySummaryBtn')?.addEventListener('click', generateActivitySummaryReport);
 
-    console.log('✅ Sentinel JCompass initialized (v7.2)');
+    console.log('✅ Sentinel JCompass initialized (v7.3)');
   } catch (err) {
     console.error('❌ JCompass initializeApp error:', err);
     console.error(err && err.stack);

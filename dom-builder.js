@@ -1,10 +1,11 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  Sentinel JCompass — Dashboard DOM Builder v7.4
+ *  Sentinel JCompass — Dashboard DOM Builder v7.5
  *  · Sidebar footer emptied (Account / Sign Out moved to right tray)
  *  · Control tray shows signed-in account name + Sign Out only
  *  · Attendance table with Duration + Checks columns
- *  · Create New Project modal includes "Assign To" dropdown
+ *  · Create New Project modal uses 2-column assignee picker
+ *  · Project Profile modal "Assigned To" is a select (not free text)
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
@@ -372,7 +373,7 @@
     </main>
 
     <div class="modal-overlay" id="newProjectModal">
-      <div class="modal">
+      <div class="modal" style="max-width:640px; width:95vw;">
         <div class="modal-header"><h2 class="modal-title">Create New Project</h2><button class="modal-close" data-close="newProjectModal" type="button">✕</button></div>
         <div class="modal-body">
           <label class="form-label">Project Title</label>
@@ -385,10 +386,12 @@
             <option value="SPORTS">Sports</option>
             <option value="OPINION">Opinion</option>
           </select>
-          <label class="form-label">Assign To</label>
-          <select class="form-select" id="newProjectReporter">
-            <option value="">— Unassigned —</option>
-          </select>
+          <label class="form-label">Assign To <span style="color:var(--text-muted);font-weight:400;">(pick one — optional)</span></label>
+          <div class="assignee-search-wrap">
+            <input type="text" id="newProjectAssigneeSearch" class="assignee-search" placeholder="Search by name..." autocomplete="off">
+            <button type="button" class="assignee-search-btn" data-search-trigger="newProjectAssignee" aria-label="Search">🔍</button>
+          </div>
+          <div id="newProjectAssigneeList" class="assignee-picker"></div>
           <label class="form-label">Deadline</label>
           <input class="form-input" id="newDeadline" type="date">
         </div>
@@ -532,7 +535,12 @@
               <button class="priority-select-btn" data-priority="HIGH" type="button">🔴 High</button>
             </div>
           </div>
-          <div><label class="form-label">Assigned To</label><input type="text" class="form-input" id="profileAssignedReporter" placeholder="Who is working on this?"></div>
+          <div>
+            <label class="form-label">Assigned To</label>
+            <select class="form-select" id="profileAssignedReporter">
+              <option value="">— Unassigned —</option>
+            </select>
+          </div>
           <div><label class="form-label">Notes</label><textarea class="form-input" id="profileNotes" rows="4" placeholder="Add notes..." style="resize:vertical; font-family:var(--font-body);"></textarea></div>
           <div><label class="form-label">Tags</label><input type="text" class="form-input" id="profileTags" placeholder="e.g., urgent, follow-up"></div>
           <div>
