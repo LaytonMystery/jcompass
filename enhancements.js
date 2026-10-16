@@ -239,8 +239,6 @@
         if (res === 'granted') {
           if (typeof triggerNotificationToast === 'function')
             triggerNotificationToast('✓ Notifications enabled.');
-          const u = window.JC.Session.user();
-          if (u && typeof setOneSignalUser === 'function') setOneSignalUser(u.name).catch(() => {});
           if (typeof window.JC.registerFCM === 'function') {
             window.JC.registerFCM().catch(() => {});
           }

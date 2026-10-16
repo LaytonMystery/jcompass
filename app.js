@@ -10,6 +10,7 @@
  * ║  · Geofence venue enforcement + spot-checks while checked in         ║
  * ║  · Create New Project modal uses 2-column assignee picker            ║
  * ║  · Project Profile "Assigned To" is a select (no free text)          ║
+ * ║  · FCM push (native via Capacitor / web via Firebase)                ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
 
@@ -438,8 +439,6 @@ async function enforceSessionGuard() {
   evaluateClearancePermissions();
   rebuildApplicationDOMViews();
   subscribeRealtime();
-
-  if (typeof setOneSignalUser === 'function') setOneSignalUser(currentUser.name);
 }
 
 function evaluateClearancePermissions() {
@@ -3540,7 +3539,7 @@ function initTheme() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   SECTION 28: ONESIGNAL + PUSH
+   SECTION 28: PUSH
    ═══════════════════════════════════════════════════════════════════════ */
 
 async function sendPushNotification(title, message, targetUserName = null) {
@@ -3554,25 +3553,6 @@ async function sendPushNotification(title, message, targetUserName = null) {
     if (!res.ok || !json.ok) console.warn('Push failed:', json);
     return json;
   } catch (err) { console.error('Push failed:', err); }
-}
-
-async function setOneSignalUser(userName) {
-  if (!userName) return;
-  window.OneSignalDeferred = window.OneSignalDeferred || [];
-
-  const attempt = (retriesLeft) => {
-    OneSignalDeferred.push(async (OneSignal) => {
-      try {
-        await OneSignal.login(userName);
-        console.log('[JCompass] OneSignal user tagged:', userName);
-        try { await OneSignal.User.PushSubscription.optIn(); } catch {}
-      } catch (e) {
-        console.warn('[JCompass] OneSignal.login failed, retrying…', e);
-        if (retriesLeft > 0) setTimeout(() => attempt(retriesLeft - 1), 1500);
-      }
-    });
-  };
-  attempt(3);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -3660,17 +3640,6 @@ function initializeApp() {
     initSupabaseClient();
     initTheme();
     wireControlTray();
-
-    if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
-      try {
-        const OneSignal = window.Capacitor.Plugins?.OneSignal || window.plugins?.OneSignal;
-        if (OneSignal) {
-          OneSignal.initialize(CONFIG.ONESIGNAL_APP_ID);
-          OneSignal.Notifications.requestPermission(true).then(accepted =>
-            console.log('OneSignal permission:', accepted));
-        }
-      } catch (e) { console.warn('OneSignal init skipped:', e); }
-    }
 
     enforceSessionGuard();
 

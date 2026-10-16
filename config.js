@@ -14,7 +14,6 @@ JC.CONFIG = {
   LOGIN_PAGE:          'login.html',
   HOME_PAGE:           'index.html',
   PUSH_FN_URL:         'https://odqfqaywzwvxkvqptzxo.supabase.co/functions/v1/send-push',
-  ONESIGNAL_APP_ID:    'e76cbe01-1a76-4f3d-a45d-9d155a126093',
   STORAGE_BUCKET:      'submissions',
   CACHE_VERSION:       'v6',
 };
