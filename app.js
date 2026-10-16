@@ -1,6 +1,6 @@
 /**
  * ╔══════════════════════════════════════════════════════════════════════╗
- * ║  SENTINEL JOURNALIST'S COMPASS v7.3                                  ║
+ * ║  SENTINEL JOURNALIST'S COMPASS v7.4                                  ║
  * ║  · Overdue projects modal (extend / archive)                         ║
  * ║  · Multi-assignee tasks + search pickers                             ║
  * ║  · Editor in Chief role                                              ║
@@ -10,6 +10,7 @@
  * ║  · Geofence venue enforcement + spot-checks while checked in         ║
  * ║  · Create New Project modal uses 2-column assignee picker            ║
  * ║  · Project Profile "Assigned To" is a select (no free text)          ║
+ * ║  · Archive page shows Archived Tasks + Archived Field Ops            ║
  * ║  · FCM push (native via Capacitor / web via Firebase)                ║
  * ╚══════════════════════════════════════════════════════════════════════╝
  */
@@ -491,6 +492,8 @@ function rebuildApplicationDOMViews() {
   generateDeadlineCalendarGrid();
   initAttendancePage();
   generateArchiveGrid();
+  generateArchivedAssignmentsGrid();
+  generateArchivedDeploymentsGrid();
   renderArchiveRequestsPanel();
   generateArchiveReportsGrid();
   generateActivitySummaryGrid();
@@ -1330,7 +1333,7 @@ async function archiveDeployment(deploymentId) {
   await logAudit('archive_deployment', 'deployment', d.id, d.title, 'Assigned members: ' + (d.reporter || '—'));
   flushCachedCollections();
   document.getElementById('deploymentProfileModal').classList.remove('active');
-  generateDeploymentsGrid();
+  rebuildApplicationDOMViews();
   triggerNotificationToast('✓ Operation archived.');
 }
 
@@ -1617,7 +1620,7 @@ async function archiveAssignment(asgId) {
   a.archived = true;
   await logAudit('archive_assignment', 'assignment', a.id, a.title, 'Archived');
   flushCachedCollections();
-  generateAssignmentsGrid();
+  rebuildApplicationDOMViews();
   triggerNotificationToast('Task archived.');
 }
 
@@ -1815,9 +1818,6 @@ function openCalendarDayModal(dateStr) {
 
 /* ═══════════════════════════════════════════════════════════════════════
    SECTION 17: ATTENDANCE
-   · 15-min check-in cooldown
-   · Geofence enforcement on check-in / check-out
-   · Random spot-checks while a session is open (check_type = SPOT_CHECK)
    ═══════════════════════════════════════════════════════════════════════ */
 
 const CHECKIN_COOLDOWN_MS      = 15 * 60 * 1000;
@@ -1833,7 +1833,6 @@ let spotCheckCountdownInterval = null;
 
 const getTodayStr = () => Utils.todayLocalISO();
 
-/* ── Generic helpers ─────────────────────────────────────────────── */
 function formatDuration(ms) {
   if (!ms || ms < 0) ms = 0;
   const totalSec = Math.floor(ms / 1000);
@@ -1855,7 +1854,6 @@ function distanceMeters(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-/* ── Session helpers ─────────────────────────────────────────────── */
 function isCheckInRow(log) {
   return (log.check_type || 'CHECK_IN') === 'CHECK_IN';
 }
@@ -1909,7 +1907,6 @@ function getSpotChecksForSession(sessionId) {
     .sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
 }
 
-/* ── Find the deployment (and thus venue) linked to a session ────── */
 function getSessionDeployment(session) {
   if (!session || !session.task_ref_id) return null;
   return deployments.find(d => String(d.id) === String(session.task_ref_id)) || null;
@@ -1933,7 +1930,6 @@ function geofenceCheck(venue, lat, lon) {
   return { ok: false, dist };
 }
 
-/* ── Persisted spot-check scheduling state ───────────────────────── */
 function loadSpotState() {
   try {
     const raw = localStorage.getItem(SPOT_CHECK_STATE_KEY);
@@ -1966,7 +1962,6 @@ function ensureSpotScheduleForSession(session) {
   return s;
 }
 
-/* ── Spot-check overlay ──────────────────────────────────────────── */
 function ensureSpotCheckOverlay() {
   if (spotCheckOverlayEl && document.body.contains(spotCheckOverlayEl)) return spotCheckOverlayEl;
   const el = document.createElement('div');
@@ -2159,7 +2154,6 @@ function stopSpotCheckScheduler() {
   saveSpotState(null);
 }
 
-/* ── Attendance UI ───────────────────────────────────────────────── */
 function stopAttendanceTicker() {
   if (attendanceTickerId) {
     clearInterval(attendanceTickerId);
@@ -2769,6 +2763,157 @@ function generateArchiveGrid() {
     btn.addEventListener('click', () => restoreArchivedProject(parseInt(btn.dataset.archiveRestore, 10))));
   container.querySelectorAll('[data-archive-delete]').forEach(btn =>
     btn.addEventListener('click', () => deleteArchivedProject(parseInt(btn.dataset.archiveDelete, 10))));
+}
+
+/* ── Archived Tasks ─────────────────────────────────────────── */
+function generateArchivedAssignmentsGrid() {
+  const container = document.getElementById('archivedAssignmentsGrid');
+  const countBadge = document.getElementById('archivedAssignmentsCountBadge');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const archived = assignments.filter(a => a.archived);
+  if (countBadge) countBadge.innerText = archived.length + ' archived';
+
+  const canManage = isPrivileged();
+
+  if (archived.length === 0) {
+    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No archived tasks.</div>';
+    return;
+  }
+
+  archived.forEach(a => {
+    const card = document.createElement('div');
+    card.className = 'card archived-card';
+    card.innerHTML =
+      '<div class="card-category">TASK · ' + esc(a.priority || 'MEDIUM') + '</div>' +
+      '<div class="card-title">' + esc(a.title) + '</div>' +
+      '<div class="card-assignee-row"><span style="font-size:0.82rem;color:var(--text-muted);">👤 Assigned to:</span> ' + renderAssigneeChips(a.assignee) + '</div>' +
+      '<div class="card-meta"><span>Status: ' + esc(a.status || 'PENDING') + '</span>' +
+        (a.submitted_by ? '<span>📎 ' + esc(a.submitted_by) + '</span>' : '') + '</div>' +
+      (canManage ? '<div class="card-action-row">' +
+        '<button class="card-action-btn restore-btn" data-asg-restore="' + esc(a.id) + '" type="button">↩ Restore</button>' +
+        '<button class="card-action-btn delete-btn" data-asg-delete="' + esc(a.id) + '" type="button">🗑 Delete</button>' +
+      '</div>' : '');
+    container.appendChild(card);
+  });
+
+  container.querySelectorAll('[data-asg-restore]').forEach(btn =>
+    btn.addEventListener('click', () => restoreArchivedAssignment(parseInt(btn.dataset.asgRestore, 10))));
+  container.querySelectorAll('[data-asg-delete]').forEach(btn =>
+    btn.addEventListener('click', () => deleteArchivedAssignment(parseInt(btn.dataset.asgDelete, 10))));
+}
+
+async function restoreArchivedAssignment(asgId) {
+  if (!isPrivileged()) { triggerNotificationToast('Admin access required.'); return; }
+  const a = assignments.find(x => x.id === asgId);
+  if (!a) return;
+  if (!confirm('Restore task "' + a.title + '"?')) return;
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient.from('assignments').update({ archived: false }).eq('id', asgId);
+      if (error) throw error;
+    } catch (err) { triggerNotificationToast('Restore failed: ' + err.message); return; }
+  }
+  a.archived = false;
+  await logAudit('restore_assignment', 'assignment', a.id, a.title, 'Restored from archive');
+  flushCachedCollections();
+  rebuildApplicationDOMViews();
+  triggerNotificationToast('✓ Task restored.');
+}
+
+async function deleteArchivedAssignment(asgId) {
+  if (!isPrivileged()) { triggerNotificationToast('Admin access required.'); return; }
+  const a = assignments.find(x => x.id === asgId);
+  if (!a) return;
+  if (!confirm('Permanently delete task "' + a.title + '"?')) return;
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient.from('assignments').delete().eq('id', asgId);
+      if (error) throw error;
+    } catch (err) { triggerNotificationToast('Delete failed: ' + err.message); return; }
+  }
+  assignments = assignments.filter(x => x.id !== asgId);
+  await logAudit('delete_assignment', 'assignment', asgId, a.title, 'Deleted from archive');
+  flushCachedCollections();
+  rebuildApplicationDOMViews();
+  triggerNotificationToast('✓ Archived task deleted.');
+}
+
+/* ── Archived Field Operations ──────────────────────────────── */
+function generateArchivedDeploymentsGrid() {
+  const container = document.getElementById('archivedDeploymentsGrid');
+  const countBadge = document.getElementById('archivedDeploymentsCountBadge');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const archived = deployments.filter(d => d.archived);
+  if (countBadge) countBadge.innerText = archived.length + ' archived';
+
+  const canManage = isPrivileged();
+
+  if (archived.length === 0) {
+    container.innerHTML = '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);">No archived field operations.</div>';
+    return;
+  }
+
+  archived.forEach(d => {
+    const reporters = (d.reporter || '').split(',').map(r => r.trim()).filter(r => r);
+    const card = document.createElement('div');
+    card.className = 'card archived-card';
+    card.innerHTML =
+      '<div class="card-category">FIELD OP · ' + esc(d.priority || 'MEDIUM') + '</div>' +
+      '<div class="card-title">' + esc(d.title) + '</div>' +
+      (d.location ? '<div style="font-size:0.82rem;color:var(--text-muted);">📍 ' + esc(d.location) + '</div>' : '') +
+      '<div style="font-size:0.85rem;color:var(--text-muted);">👥 ' + reporters.length + ' member(s): <b>' + esc(reporters.join(', ') || '—') + '</b></div>' +
+      (d.venue_name ? '<div style="font-size:0.78rem;color:var(--text-muted);">📍 Venue: ' + esc(d.venue_name) + '</div>' : '') +
+      (canManage ? '<div class="card-action-row">' +
+        '<button class="card-action-btn restore-btn" data-dep-restore="' + esc(d.id) + '" type="button">↩ Restore</button>' +
+        '<button class="card-action-btn delete-btn" data-dep-delete="' + esc(d.id) + '" type="button">🗑 Delete</button>' +
+      '</div>' : '');
+    container.appendChild(card);
+  });
+
+  container.querySelectorAll('[data-dep-restore]').forEach(btn =>
+    btn.addEventListener('click', () => restoreArchivedDeployment(parseInt(btn.dataset.depRestore, 10))));
+  container.querySelectorAll('[data-dep-delete]').forEach(btn =>
+    btn.addEventListener('click', () => deleteArchivedDeployment(parseInt(btn.dataset.depDelete, 10))));
+}
+
+async function restoreArchivedDeployment(depId) {
+  if (!isPrivileged()) { triggerNotificationToast('Admin access required.'); return; }
+  const d = deployments.find(x => x.id === depId);
+  if (!d) return;
+  if (!confirm('Restore field operation "' + d.title + '"?')) return;
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient.from('deployments').update({ archived: false }).eq('id', depId);
+      if (error) throw error;
+    } catch (err) { triggerNotificationToast('Restore failed: ' + err.message); return; }
+  }
+  d.archived = false;
+  await logAudit('restore_deployment', 'deployment', d.id, d.title, 'Restored from archive');
+  flushCachedCollections();
+  rebuildApplicationDOMViews();
+  triggerNotificationToast('✓ Operation restored.');
+}
+
+async function deleteArchivedDeployment(depId) {
+  if (!isPrivileged()) { triggerNotificationToast('Admin access required.'); return; }
+  const d = deployments.find(x => x.id === depId);
+  if (!d) return;
+  if (!confirm('Permanently delete field operation "' + d.title + '"?')) return;
+  if (supabaseClient) {
+    try {
+      const { error } = await supabaseClient.from('deployments').delete().eq('id', depId);
+      if (error) throw error;
+    } catch (err) { triggerNotificationToast('Delete failed: ' + err.message); return; }
+  }
+  deployments = deployments.filter(x => x.id !== depId);
+  await logAudit('delete_deployment', 'deployment', depId, d.title, 'Deleted from archive');
+  flushCachedCollections();
+  rebuildApplicationDOMViews();
+  triggerNotificationToast('✓ Archived operation deleted.');
 }
 
 async function restoreArchivedProject(projectId) {
@@ -3568,7 +3713,6 @@ function initSupabaseClient() {
   console.log('JCompass: Supabase client initialized.');
 }
 
-/* ── Populate the single-select assignee picker on the Create New Project modal ── */
 function populateNewProjectAssigneePicker() {
   const container = document.getElementById('newProjectAssigneeList');
   const searchInput = document.getElementById('newProjectAssigneeSearch');
@@ -3605,7 +3749,6 @@ function populateNewProjectAssigneePicker() {
   });
 }
 
-/* ── Populate the "Assigned To" select inside the Project Profile modal ── */
 function populateProfileReporterSelect(currentReporter) {
   const sel = document.getElementById('profileAssignedReporter');
   if (!sel) return;
@@ -3689,7 +3832,6 @@ function initializeApp() {
     document.getElementById('quickExportCSVBtn')?.addEventListener('click', exportProjectsCSV);
     document.getElementById('quickExportAllBtn')?.addEventListener('click', exportAllReportsCSV);
 
-    /* ── Create New Project ────────────────────────────────────── */
     document.getElementById('createProjectBtn')?.addEventListener('click', async () => {
       const title = document.getElementById('newTitle').value.trim();
       const category = document.getElementById('newCategory').value;
@@ -3836,7 +3978,6 @@ function initializeApp() {
       });
     });
 
-    /* ── New Field Operation ──────────────────────────────────── */
     document.getElementById('saveBeatBtn')?.addEventListener('click', async () => {
       const title = document.getElementById('beatName').value.trim();
       const priority = document.getElementById('beatPriority').value;
@@ -3900,7 +4041,6 @@ function initializeApp() {
       triggerNotificationToast('✓ Deployed. Notified ' + selected.length + ' member(s).');
     });
 
-    /* ── Use my location → capture venue ──────────────────────── */
     document.getElementById('captureVenueBtn')?.addEventListener('click', () => {
       if (!navigator.geolocation) { triggerNotificationToast('Geolocation not supported.'); return; }
       const btn = document.getElementById('captureVenueBtn');
@@ -3988,7 +4128,7 @@ function initializeApp() {
 
     document.getElementById('generateActivitySummaryBtn')?.addEventListener('click', generateActivitySummaryReport);
 
-    console.log('✅ Sentinel JCompass initialized (v7.3)');
+    console.log('✅ Sentinel JCompass initialized (v7.4)');
   } catch (err) {
     console.error('❌ JCompass initializeApp error:', err);
     console.error(err && err.stack);

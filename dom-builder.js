@@ -1,11 +1,12 @@
 /**
  * ══════════════════════════════════════════════════════════════════════
- *  Sentinel JCompass — Dashboard DOM Builder v7.5
+ *  Sentinel JCompass — Dashboard DOM Builder v7.6
  *  · Sidebar footer emptied (Account / Sign Out moved to right tray)
  *  · Control tray shows signed-in account name + Sign Out only
  *  · Attendance table with Duration + Checks columns
  *  · Create New Project modal uses 2-column assignee picker
  *  · Project Profile modal "Assigned To" is a select (not free text)
+ *  · Archive page includes Archived Tasks + Archived Field Ops
  * ══════════════════════════════════════════════════════════════════════
  */
 (function buildDashboardDOM() {
@@ -327,6 +328,18 @@
           <input type="text" class="search-bar" id="archiveSearchInput" placeholder="Search archived...">
         </div>
         <div class="grid" id="archiveGrid"></div>
+
+        <div class="section-header" style="margin-top: 2rem;">
+          <h2 class="section-title">📋 Archived Tasks</h2>
+          <span class="archive-count-badge" id="archivedAssignmentsCountBadge">0 archived</span>
+        </div>
+        <div class="grid" id="archivedAssignmentsGrid"></div>
+
+        <div class="section-header" style="margin-top: 2rem;">
+          <h2 class="section-title">📡 Archived Field Ops</h2>
+          <span class="archive-count-badge" id="archivedDeploymentsCountBadge">0 archived</span>
+        </div>
+        <div class="grid" id="archivedDeploymentsGrid"></div>
 
         <div class="section-header" style="margin-top: 2rem;">
           <h2 class="section-title">📄 Closed Reports</h2>
